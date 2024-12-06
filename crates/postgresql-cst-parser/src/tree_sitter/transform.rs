@@ -2,15 +2,10 @@ use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, PostgreSQLSyntax, ResolvedNode};
 
-/// Function call flow:
-///  transform_cst (public)
-///    +- walk_and_build
-///      +- flatten
-///      +- remove_exact
-
 pub fn transform_cst(root: &ResolvedNode) -> ResolvedNode {
     let mut builder = GreenNodeBuilder::new();
 
+    // Build `Root` node
     builder.start_node(SyntaxKind::Root);
     walk_and_build(&mut builder, root);
     builder.finish_node();
@@ -35,11 +30,6 @@ fn walk_and_build(
     while let Some(child) = children.next() {
         match child {
             NodeOrToken::Node(n) => {
-                // for debug
-                if format!("{}", n.kind()).starts_with("opt_") {
-                    println!("Node  (kind: {})", n.kind());
-                }
-
                 match n.kind() {
                     child_kind @ SyntaxKind::target_list => {
                         if parent_kind == child_kind {
@@ -48,13 +38,14 @@ fn walk_and_build(
                             // This patten does not construct node.
                             //
                             // * target_list (parent)   <- 1. A node that passed as an argument of this function.
-                            //   +- target_el           <- 2. This token was already consumed in previous loop.
+                            //   +- target_el           <- 2. This node (or token) was already consumed in previous loop.
                             //   +- target_list (child) <- 3. This is the nested node (parent is the same syntax kind).  Just ignore this node, and continue building its children.
                             //     +- target_el 
                             //     +- ...
                             // 
                             walk_and_build(builder, n);
                         } else {
+                            // flatten target node, but it's root
                             builder.start_node(n.kind());
                             walk_and_build(builder, n);
                             builder.finish_node();
@@ -67,30 +58,23 @@ fn walk_and_build(
                         // just ignore current node, and continue building its children.
                         //
                         // (Old Tree)                                                   (New Tree) 
-                        // *- parent_node                  (ignore opt_target_list)     *- parent_node
-                        //    +- opt_target_list          =========================>       +- child_1
-                        //       +- child_1                                                +- child_2
+                        // *- parent_node            (ignore opt_target_list)     *- parent_node
+                        //    +- opt_target_list    =========================>       +- child_1
+                        //       +- child_1                                          +- child_2
                         //       +- child_1
                         //
                         walk_and_build(builder, n);
                     }
 
-                    // all pattern
-                    kind @ _ => {
-                        builder.start_node(kind);
+                    // Default pattern
+                    _ => {
+                        builder.start_node(n.kind());
                         walk_and_build(builder, n);
                         builder.finish_node();
                     }
                 }
             }
             NodeOrToken::Token(t) => {
-                // for debug
-                // println!(
-                //     "Token (kind: {}, text: \"{}\")",
-                //     t.kind(),
-                //     t.text().escape_debug()
-                // );
-
                 builder.token(t.kind(), t.text());
             }
         }
