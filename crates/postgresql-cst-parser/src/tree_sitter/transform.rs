@@ -40,9 +40,9 @@ fn walk_and_build(
                             // * target_list (parent)   <- 1. A node that passed as an argument of this function.
                             //   +- target_el           <- 2. This node (or token) was already consumed in previous loop.
                             //   +- target_list (child) <- 3. This is the nested node (parent is the same syntax kind).  Just ignore this node, and continue building its children.
-                            //     +- target_el 
+                            //     +- target_el
                             //     +- ...
-                            // 
+                            //
                             walk_and_build(builder, n);
                         } else {
                             // flatten target node, but it's root
@@ -57,7 +57,7 @@ fn walk_and_build(
                         //
                         // just ignore current node, and continue building its children.
                         //
-                        // (Old Tree)                                                   (New Tree) 
+                        // (Old Tree)                                                   (New Tree)
                         // *- parent_node            (ignore opt_target_list)     *- parent_node
                         //    +- opt_target_list    =========================>       +- child_1
                         //       +- child_1                                          +- child_2
@@ -95,13 +95,10 @@ SELECT
 FROM
 	A
 ,	B"#;
-        // dbg!(input);
-        let root = cst::parse(input).unwrap();
 
+        let root = cst::parse(input).unwrap();
         let new_root = transform_cst(&root);
 
-        // dbg!(&root);
-        // dbg!(&new_root);
         assert_eq!(format!("{root}"), format!("{new_root}"));
     }
     mod removal {
@@ -119,53 +116,57 @@ FROM
     }
 
     mod flatten {
-        use crate::{cst, tree_sitter::transform::transform_cst};
+        use crate::{cst, syntax_kind::SyntaxKind, tree_sitter::transform::transform_cst};
+
+        use super::utility::assert_no_direct_nested_kind;
 
         #[test]
-        fn target_list() {
+        fn no_nested_target_list() {
             let input = "select a,b,c;";
             let root = cst::parse(input).unwrap();
             let new_root = transform_cst(&root);
 
-            let actual = format!("{new_root:#?}");
-            let expected = r#"Root@0..13
-  parse_toplevel@0..13
-    stmtmulti@0..13
-      stmtmulti@0..12
-        toplevel_stmt@0..12
-          stmt@0..12
-            SelectStmt@0..12
-              select_no_parens@0..12
-                simple_select@0..12
-                  SELECT@0..6 "select"
-                  Whitespace@6..7 " "
-                  target_list@7..12
-                    target_el@7..8
-                      a_expr@7..8
-                        c_expr@7..8
-                          columnref@7..8
-                            ColId@7..8
-                              IDENT@7..8 "a"
-                    Comma@8..9 ","
-                    target_el@9..10
-                      a_expr@9..10
-                        c_expr@9..10
-                          columnref@9..10
-                            ColId@9..10
-                              IDENT@9..10 "b"
-                    Comma@10..11 ","
-                    target_el@11..12
-                      a_expr@11..12
-                        c_expr@11..12
-                          columnref@11..12
-                            ColId@11..12
-                              IDENT@11..12 "c"
-      Semicolon@12..13 ";"
-"#;
-
-            assert_eq!(actual, expected);
+            assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
         }
-        
+    }
+
+    #[cfg(test)]
+    mod utility {
+        use crate::{cst, syntax_kind::SyntaxKind, ResolvedNode};
+
+        pub fn assert_no_direct_nested_kind(root: &ResolvedNode, kind: SyntaxKind) {
+            fn visit(node: &ResolvedNode, kind: SyntaxKind) {
+                if node.kind() == kind {
+                    for child in node.children() {
+                        if child.kind() == kind {
+                            panic!("Found a {:?} node that directly contains another {:?} node as a child.", node, kind);
+                        }
+                    }
+                }
+
+                for child in node.children() {
+                    visit(&child, kind);
+                }
+            }
+            visit(root, kind);
+        }
+
+        #[test]
+        fn test_no_direct_nested_kind_passes() {
+            let input = "select a;";
+            let root = cst::parse(input).unwrap();
+
+            assert_no_direct_nested_kind(&root, SyntaxKind::target_list);
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_no_direct_nested_kind_fails() {
+            let input = "select a,b,c;";
+            let root = cst::parse(input).unwrap();
+
+            assert_no_direct_nested_kind(&root, SyntaxKind::target_list);
+        }
     }
 }
 
