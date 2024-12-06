@@ -2,7 +2,7 @@ use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, PostgreSQLSyntax, ResolvedNode};
 
-pub fn transform_cst(root: &ResolvedNode) -> ResolvedNode {
+pub fn convert_cst(root: &ResolvedNode) -> ResolvedNode {
     let mut builder = GreenNodeBuilder::new();
 
     // Build `Root` node
@@ -11,10 +11,8 @@ pub fn transform_cst(root: &ResolvedNode) -> ResolvedNode {
     builder.finish_node();
 
     let (tree, cache) = builder.finish();
-    let new_root =
-        SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap());
 
-    new_root
+    SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap())
 }
 
 /// CST を走査し、いくつかの Node を書き換える
@@ -85,7 +83,7 @@ fn walk_and_build(
 
 #[cfg(test)]
 mod tests {
-    use crate::{cst, tree_sitter::transform::transform_cst};
+    use crate::{cst, tree_sitter::convert::convert_cst};
 
     #[test]
     ///  Assert that the CST is not broken by the conversion.
@@ -100,7 +98,7 @@ FROM
 ,	B"#;
 
         let root = cst::parse(input).unwrap();
-        let new_root = transform_cst(&root);
+        let new_root = convert_cst(&root);
 
         //  format!("{ResolvedNode}") returns original input str.
         assert_eq!(format!("{root}"), format!("{new_root}"));
@@ -112,7 +110,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_exists, assert_not_exists},
-                transform::transform_cst,
+                convert::convert_cst,
             },
         };
 
@@ -122,7 +120,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_exists(&root, SyntaxKind::opt_target_list);
 
-            let new_root = transform_cst(&root);
+            let new_root = convert_cst(&root);
             assert_not_exists(&new_root, SyntaxKind::opt_target_list);
         }
     }
@@ -133,7 +131,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_no_direct_nested_kind, assert_node_count},
-                transform::transform_cst,
+                convert::convert_cst,
             },
         };
 
@@ -144,7 +142,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_node_count(&root, SyntaxKind::target_list, 3);
 
-            let new_root = transform_cst(&root);
+            let new_root = convert_cst(&root);
             assert_node_count(&new_root, SyntaxKind::target_list, 1);
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
         }
@@ -153,7 +151,7 @@ FROM
         fn no_nested_stmtmulti() {
             let input = "select a,b,c;\nselect d,e from t;";
             let root = cst::parse(input).unwrap();
-            let new_root = transform_cst(&root);
+            let new_root = convert_cst(&root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::stmtmulti);
         }
@@ -162,7 +160,7 @@ FROM
         fn no_nested_from_list() {
             let input = "select * from t1, t2;";
             let root = cst::parse(input).unwrap();
-            let new_root = transform_cst(&root);
+            let new_root = convert_cst(&root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::from_list);
         }
