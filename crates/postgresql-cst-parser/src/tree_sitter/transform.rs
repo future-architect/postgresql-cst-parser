@@ -99,6 +99,8 @@ FROM
         let root = cst::parse(input).unwrap();
         let new_root = transform_cst(&root);
 
+        //  Assert that the CST is not broken by the conversion.
+        //  format!("{ResolvedNode}") returns original input str.
         assert_eq!(format!("{root}"), format!("{new_root}"));
     }
 
