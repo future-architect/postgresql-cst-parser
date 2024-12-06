@@ -1,4 +1,7 @@
+#[cfg(test)]
+mod assert_util;
 mod transform;
+
 pub use transform::transform_cst;
 
 use std::{collections::HashMap, fmt::Display, rc::Rc};

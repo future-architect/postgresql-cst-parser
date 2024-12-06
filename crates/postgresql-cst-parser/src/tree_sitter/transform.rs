@@ -101,24 +101,37 @@ FROM
 
         assert_eq!(format!("{root}"), format!("{new_root}"));
     }
+
     mod removal {
-        use crate::{cst, tree_sitter::transform::transform_cst};
+        use crate::{
+            cst,
+            syntax_kind::SyntaxKind,
+            tree_sitter::{
+                assert_util::{assert_exists, assert_not_exists},
+                transform::transform_cst,
+            },
+        };
 
         #[test]
         fn opt_target_list() {
             let input = "select a,b,c;";
             let root = cst::parse(input).unwrap();
-            let new_root = transform_cst(&root);
+            assert_exists(&root, SyntaxKind::opt_target_list);
 
-            let printed_new_tree = format!("{new_root:#?}");
-            assert!(!printed_new_tree.contains("opt_target_list"))
+            let new_root = transform_cst(&root);
+            assert_not_exists(&new_root, SyntaxKind::opt_target_list);
         }
     }
 
     mod flatten {
-        use crate::{cst, syntax_kind::SyntaxKind, tree_sitter::transform::transform_cst};
-
-        use super::utility::assert_no_direct_nested_kind;
+        use crate::{
+            cst,
+            syntax_kind::SyntaxKind,
+            tree_sitter::{
+                assert_util::{assert_no_direct_nested_kind, assert_node_count},
+                transform::transform_cst,
+            },
+        };
 
         #[test]
         fn no_nested_target_list() {
@@ -126,81 +139,44 @@ FROM
             let root = cst::parse(input).unwrap();
             let new_root = transform_cst(&root);
 
+            assert_node_count(&root, SyntaxKind::target_list, 3);
+
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
+            assert_node_count(&new_root, SyntaxKind::target_list, 1);
         }
     }
 
     #[cfg(test)]
-    mod utility {
-        use crate::{cst, syntax_kind::SyntaxKind, ResolvedNode};
-
-        pub fn assert_no_direct_nested_kind(root: &ResolvedNode, kind: SyntaxKind) {
-            fn visit(node: &ResolvedNode, kind: SyntaxKind) {
-                if node.kind() == kind {
-                    for child in node.children() {
-                        if child.kind() == kind {
-                            panic!("Found a {:?} node that directly contains another {:?} node as a child.", node, kind);
-                        }
-                    }
-                }
-
-                for child in node.children() {
-                    visit(&child, kind);
-                }
-            }
-            visit(root, kind);
-        }
+    mod learning_tests {
+        use crate::cst;
 
         #[test]
-        fn test_no_direct_nested_kind_passes() {
+        fn simple_format() {
             let input = "select a;";
             let root = cst::parse(input).unwrap();
 
-            assert_no_direct_nested_kind(&root, SyntaxKind::target_list);
+            let actual = format!("{root}");
+            let expected = "select a;";
+            assert_eq!(actual, expected);
         }
 
         #[test]
-        #[should_panic]
-        fn test_no_direct_nested_kind_fails() {
-            let input = "select a,b,c;";
+        fn debug_formmat() {
+            let input = "select a;";
             let root = cst::parse(input).unwrap();
 
-            assert_no_direct_nested_kind(&root, SyntaxKind::target_list);
+            let actual = format!("{root:?}");
+            let expected = "Root@0..9";
+            assert_eq!(actual, expected);
         }
-    }
-}
 
-#[cfg(test)]
-mod learning_tests {
-    use crate::cst;
+        #[test]
+        fn pretty_debug_formmat() {
+            let input = "select a;";
+            let root = cst::parse(input).unwrap();
 
-    #[test]
-    fn simple_format() {
-        let input = "select a;";
-        let root = cst::parse(input).unwrap();
-
-        let actual = format!("{root}");
-        let expected = "select a;";
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn debug_formmat() {
-        let input = "select a;";
-        let root = cst::parse(input).unwrap();
-
-        let actual = format!("{root:?}");
-        let expected = "Root@0..9";
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn pretty_debug_formmat() {
-        let input = "select a;";
-        let root = cst::parse(input).unwrap();
-
-        let actual = format!("{root:#?}");
-        let expected = r#"Root@0..9
+            let actual = format!("{root:#?}");
+            let expected = r#"Root@0..9
   parse_toplevel@0..9
     stmtmulti@0..9
       stmtmulti@0..8
@@ -221,6 +197,7 @@ mod learning_tests {
                                 IDENT@7..8 "a"
       Semicolon@8..9 ";"
 "#;
-        assert_eq!(actual, expected);
+            assert_eq!(actual, expected);
+        }
     }
 }
