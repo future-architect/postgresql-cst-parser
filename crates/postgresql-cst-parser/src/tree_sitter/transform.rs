@@ -25,9 +25,9 @@ fn walk_and_build(
 ) {
     use cstree::util::NodeOrToken;
     let parent_kind = node.kind();
-    let mut children = node.children_with_tokens();
+    let children = node.children_with_tokens();
 
-    while let Some(child) = children.next() {
+    for child in children {
         match child {
             NodeOrToken::Node(n) => {
                 match n.kind() {
@@ -47,7 +47,7 @@ fn walk_and_build(
                             //
                             walk_and_build(builder, n);
                         } else {
-                            // flatten target node, but it's root
+                            // フラット化の対象だが、ネストのトップにあるノード
                             builder.start_node(n.kind());
                             walk_and_build(builder, n);
                             builder.finish_node();
@@ -57,7 +57,7 @@ fn walk_and_build(
                     SyntaxKind::opt_target_list => {
                         // [Removal]
                         //
-                        // just ignore current node, and continue building its children.
+                        // Ignore current node, and continue building its children.
                         //
                         // (Old Tree)                                                   (New Tree)
                         // *- parent_node            (ignore opt_target_list)     *- parent_node
@@ -88,6 +88,7 @@ mod tests {
     use crate::{cst, tree_sitter::transform::transform_cst};
 
     #[test]
+    ///  Assert that the CST is not broken by the conversion.
     fn restored_texts_are_equal() {
         let input = r#"
 SELECT
@@ -101,7 +102,6 @@ FROM
         let root = cst::parse(input).unwrap();
         let new_root = transform_cst(&root);
 
-        //  Assert that the CST is not broken by the conversion.
         //  format!("{ResolvedNode}") returns original input str.
         assert_eq!(format!("{root}"), format!("{new_root}"));
     }
@@ -117,7 +117,7 @@ FROM
         };
 
         #[test]
-        fn opt_target_list() {
+        fn no_opt_target_list() {
             let input = "select a,b,c;";
             let root = cst::parse(input).unwrap();
             assert_exists(&root, SyntaxKind::opt_target_list);
@@ -140,11 +140,12 @@ FROM
         #[test]
         fn no_nested_target_list() {
             let input = "select a,b,c;";
-            let root = cst::parse(input).unwrap();
-            let new_root = transform_cst(&root);
 
+            let root = cst::parse(input).unwrap();
             assert_node_count(&root, SyntaxKind::target_list, 3);
 
+            let new_root = transform_cst(&root);
+            assert_node_count(&new_root, SyntaxKind::target_list, 1);
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
         }
 

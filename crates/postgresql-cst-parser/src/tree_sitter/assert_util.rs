@@ -1,15 +1,17 @@
 use crate::{syntax_kind::SyntaxKind, ResolvedNode};
 
+/// Asserts that there is at least one node of the specified `SyntaxKind` in the given syntax tree.
 pub fn assert_exists(root: &ResolvedNode, kind: SyntaxKind) {
     let exists = root.descendants().any(|node| node.kind() == kind);
     if !exists {
         panic!(
-            "Expected no nodes of kind {:?}, but at least one was found.",
+            "Expected at least one node of kind {:?}, but none was found.",
             kind
         );
     }
 }
 
+/// Asserts that there are no nodes of the specified `SyntaxKind` in the given syntax tree.
 pub fn assert_not_exists(root: &ResolvedNode, kind: SyntaxKind) {
     let exists = root.descendants().any(|node| node.kind() == kind);
     if exists {
@@ -20,6 +22,7 @@ pub fn assert_not_exists(root: &ResolvedNode, kind: SyntaxKind) {
     }
 }
 
+/// Asserts that the exact number of nodes of the specified `SyntaxKind` matches the given count.
 pub fn assert_node_count(root: &ResolvedNode, kind: SyntaxKind, expected_count: usize) {
     let actual_count = root
         .descendants()
@@ -32,6 +35,8 @@ pub fn assert_node_count(root: &ResolvedNode, kind: SyntaxKind, expected_count: 
     )
 }
 
+/// Asserts that there are no directly nested nodes of the specified `SyntaxKind`.
+/// In other words, a node of `kind` cannnot have another `kind` node as its immediate child.
 pub fn assert_no_direct_nested_kind(root: &ResolvedNode, kind: SyntaxKind) {
     fn visit(node: &ResolvedNode, kind: SyntaxKind) {
         if node.kind() == kind {
@@ -66,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Expected no nodes of kind InsertStmt, but at least one was found.")]
+    #[should_panic(expected = "Expected at least one node of kind InsertStmt, but none was found.")]
     fn test_assert_exists_fails() {
         let input = "select a, b, c from t;";
         let root = cst::parse(input).unwrap();
