@@ -6,7 +6,7 @@ use crate::{syntax_kind::SyntaxKind, PostgreSQLSyntax, ResolvedNode};
 ///  transform_cst (public)
 ///    +- walk_and_build
 ///      +- flatten
-///      +- remove_exact <- 消した後どうやって復帰するか、簡単に復帰できるかは未検討
+///      +- remove_exact
 
 pub fn transform_cst(root: &ResolvedNode) -> ResolvedNode {
     let mut builder = GreenNodeBuilder::new();
@@ -28,8 +28,8 @@ fn walk_and_build(
     builder: &mut GreenNodeBuilder<'static, 'static, PostgreSQLSyntax>,
     node: &ResolvedNode,
 ) {
-    //TODO: transform cst. but for now, just walk
     use cstree::util::NodeOrToken;
+    let parent_kind = node.kind();
     let mut children = node.children_with_tokens();
 
     while let Some(child) = children.next() {
@@ -40,26 +40,45 @@ fn walk_and_build(
                     println!("Node  (kind: {})", n.kind());
                 }
 
-                // thinking: opt_* でマッチして処理するか、match で全列挙するか？
-                //     node.kind って Enum か Raw Value しかないから、前方一致で分岐させるのは厳しいか
-                //     format!("{}", n.kind()).starts_with("opt_") とはできるけど、これってオーバーヘッドないのか？
-                //     tree_sitter::is_flattern_all では列挙してるからそれに従おう
-
                 match n.kind() {
-                    // TODO: flatten
-                    // SyntaxKind::target_list=> {},
-                    
-                    // removal
+                    child_kind @ SyntaxKind::target_list => {
+                        if parent_kind == child_kind {
+                            // [Flatten]
+                            //
+                            // This patten does not construct node.
+                            //
+                            // * target_list (parent)   <- 1. A node that passed as an argument of this function.
+                            //   +- target_el           <- 2. This token was already consumed in previous loop.
+                            //   +- target_list (child) <- 3. This is the nested node (parent is the same syntax kind).  Just ignore this node, and continue building its children.
+                            //     +- target_el 
+                            //     +- ...
+                            // 
+                            walk_and_build(builder, n);
+                        } else {
+                            builder.start_node(n.kind());
+                            walk_and_build(builder, n);
+                            builder.finish_node();
+                        }
+                    }
+
                     SyntaxKind::opt_target_list => {
+                        // [Removal]
+                        //
+                        // just ignore current node, and continue building its children.
+                        //
+                        // (Old Tree)                                                   (New Tree) 
+                        // *- parent_node                  (ignore opt_target_list)     *- parent_node
+                        //    +- opt_target_list          =========================>       +- child_1
+                        //       +- child_1                                                +- child_2
+                        //       +- child_1
+                        //
                         walk_and_build(builder, n);
                     }
 
                     // all pattern
                     kind @ _ => {
                         builder.start_node(kind);
-
                         walk_and_build(builder, n);
-
                         builder.finish_node();
                     }
                 }
@@ -114,7 +133,7 @@ FROM
             assert!(!printed_new_tree.contains("opt_target_list"))
         }
     }
-    
+
     mod flatten {
         use crate::{cst, tree_sitter::transform::transform_cst};
 
@@ -123,7 +142,7 @@ FROM
             let input = "select a,b,c;";
             let root = cst::parse(input).unwrap();
             let new_root = transform_cst(&root);
-            
+
             let actual = format!("{new_root:#?}");
             let expected = r#"Root@0..13
   parse_toplevel@0..13
