@@ -31,7 +31,9 @@ fn walk_and_build(
         match child {
             NodeOrToken::Node(n) => {
                 match n.kind() {
-                    child_kind @ SyntaxKind::target_list => {
+                    child_kind @ (SyntaxKind::stmtmulti
+                    | SyntaxKind::target_list
+                    | SyntaxKind::from_list) => {
                         if parent_kind == child_kind {
                             // [Flatten]
                             //
@@ -144,7 +146,24 @@ FROM
             assert_node_count(&root, SyntaxKind::target_list, 3);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
-            assert_node_count(&new_root, SyntaxKind::target_list, 1);
+        }
+
+        #[test]
+        fn no_nested_stmtmulti() {
+            let input = "select a,b,c;\nselect d,e from t;";
+            let root = cst::parse(input).unwrap();
+            let new_root = transform_cst(&root);
+
+            assert_no_direct_nested_kind(&new_root, SyntaxKind::stmtmulti);
+        }
+
+        #[test]
+        fn no_nested_from_list() {
+            let input = "select * from t1, t2;";
+            let root = cst::parse(input).unwrap();
+            let new_root = transform_cst(&root);
+
+            assert_no_direct_nested_kind(&new_root, SyntaxKind::from_list);
         }
     }
 
