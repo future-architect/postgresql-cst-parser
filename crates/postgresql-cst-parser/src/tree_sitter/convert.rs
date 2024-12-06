@@ -2,6 +2,7 @@ use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, PostgreSQLSyntax, ResolvedNode};
 
+/// Converts the given CST into a node structure and hierarchy that closely matches what `tree-sitter-sql` produces.
 pub fn convert_cst(root: &ResolvedNode) -> ResolvedNode {
     let mut builder = GreenNodeBuilder::new();
 

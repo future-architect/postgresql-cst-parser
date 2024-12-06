@@ -36,7 +36,7 @@ pub fn assert_node_count(root: &ResolvedNode, kind: SyntaxKind, expected_count: 
 }
 
 /// Asserts that there are no directly nested nodes of the specified `SyntaxKind`.
-/// In other words, a node of `kind` cannnot have another `kind` node as its immediate child.
+/// In other words, a node of `kind` cannot have another `kind` node as its immediate child.
 pub fn assert_no_direct_nested_kind(root: &ResolvedNode, kind: SyntaxKind) {
     fn visit(node: &ResolvedNode, kind: SyntaxKind) {
         if node.kind() == kind {
