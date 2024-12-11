@@ -36,23 +36,18 @@ pub fn assert_node_count(root: &ResolvedNode, kind: SyntaxKind, expected_count: 
 /// Asserts that there are no directly nested nodes of the specified `SyntaxKind`.
 /// In other words, a node of `kind` cannot have another `kind` node as its immediate child.
 pub fn assert_no_direct_nested_kind(root: &ResolvedNode, kind: SyntaxKind) {
-    fn visit(node: &ResolvedNode, kind: SyntaxKind) {
-        if node.kind() == kind {
-            for child in node.children() {
-                if child.kind() == kind {
-                    panic!(
-                        "Found a `{:?}` node that directly contains another {:?} node as a child.",
-                        node, kind
-                    );
-                }
-            }
-        }
+    let target_nodes = root.descendants().filter(|node| node.kind() == kind);
 
-        for child in node.children() {
-            visit(&child, kind);
+    for node in target_nodes {
+        if let Some(parent) = node.parent() {
+            assert!(
+                !(node.kind() == kind && parent.kind() == kind),
+                "Found a `{:?}` node that directly contains another {:?} node as a child.",
+                parent,
+                kind
+            )
         }
     }
-    visit(root, kind);
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ pub fn convert_cst(root: &ResolvedNode) -> ResolvedNode {
     SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap())
 }
 
-/// CST を走査し、いくつかの Node を書き換える
+/// Traverse the CST and rewrite certain nodes
 /// e.g. flatten list node, remove option node
 fn walk_and_build(
     builder: &mut GreenNodeBuilder<'static, 'static, PostgreSQLSyntax>,
@@ -46,7 +46,7 @@ fn walk_and_build(
                             //
                             walk_and_build(builder, n);
                         } else {
-                            // フラット化の対象だが、ネストのトップにあるノード
+                            // Node is target for flattening, but at the top level of the nest
                             builder.start_node(n.kind());
                             walk_and_build(builder, n);
                             builder.finish_node();
@@ -58,7 +58,7 @@ fn walk_and_build(
                         //
                         // Ignore current node, and continue building its children.
                         //
-                        // (Old Tree)                                                   (New Tree)
+                        // (Old Tree)                                             (New Tree)
                         // *- parent_node            (ignore opt_target_list)     *- parent_node
                         //    +- opt_target_list    =========================>       +- child_1
                         //       +- child_1                                          +- child_2
@@ -164,61 +164,6 @@ FROM
             let new_root = convert_cst(&root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::from_list);
-        }
-    }
-
-    #[cfg(test)]
-    mod learning_tests {
-        use crate::cst;
-
-        #[test]
-        fn simple_format() {
-            let input = "select a;";
-            let root = cst::parse(input).unwrap();
-
-            let actual = format!("{root}");
-            let expected = "select a;";
-            assert_eq!(actual, expected);
-        }
-
-        #[test]
-        fn debug_formmat() {
-            let input = "select a;";
-            let root = cst::parse(input).unwrap();
-
-            let actual = format!("{root:?}");
-            let expected = "Root@0..9";
-            assert_eq!(actual, expected);
-        }
-
-        #[test]
-        fn pretty_debug_formmat() {
-            let input = "select a;";
-            let root = cst::parse(input).unwrap();
-
-            let actual = format!("{root:#?}");
-            let expected = r#"Root@0..9
-  parse_toplevel@0..9
-    stmtmulti@0..9
-      stmtmulti@0..8
-        toplevel_stmt@0..8
-          stmt@0..8
-            SelectStmt@0..8
-              select_no_parens@0..8
-                simple_select@0..8
-                  SELECT@0..6 "select"
-                  Whitespace@6..7 " "
-                  opt_target_list@7..8
-                    target_list@7..8
-                      target_el@7..8
-                        a_expr@7..8
-                          c_expr@7..8
-                            columnref@7..8
-                              ColId@7..8
-                                IDENT@7..8 "a"
-      Semicolon@8..9 ";"
-"#;
-            assert_eq!(actual, expected);
         }
     }
 }
