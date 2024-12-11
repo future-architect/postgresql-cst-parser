@@ -109,9 +109,12 @@ impl<'a> Node<'a> {
         &self.input[start..end]
     }
 
-    pub fn children(&self) {}
-
-    pub fn child_count(&self) {}
+    pub fn child_count(&self) -> usize {
+        if let Some(node) = self.node_or_token.as_node() {
+            return node.children_with_tokens().count();
+        }
+        0
+    }
 
     pub fn next_sibling(&self) -> Option<Node<'a>> {
         self.node_or_token
