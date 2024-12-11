@@ -1,3 +1,9 @@
+#[cfg(test)]
+mod assert_util;
+
+mod convert;
+pub use convert::convert_cst;
+
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use cstree::text::TextRange;
