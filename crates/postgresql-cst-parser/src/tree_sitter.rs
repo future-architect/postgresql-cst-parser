@@ -133,6 +133,14 @@ impl<'a> From<Node<'a>> for TreeCursor<'a> {
 }
 
 impl<'a> TreeCursor<'a> {
+    pub fn node(&self) -> Node<'a> {
+        Node {
+            input: self.input,
+            range_map: Rc::clone(&self.range_map),
+            node_or_token: self.node_or_token,
+        }
+    }
+
     pub fn goto_first_child(&mut self) -> bool {
         if self.node_or_token.as_node().is_none() {
             return false;
@@ -166,6 +174,20 @@ impl<'a> TreeCursor<'a> {
                 cursor.node_or_token = NodeOrToken::Node(cursor.node_or_token.parent().unwrap());
             }
         }
+    }
+
+    pub fn goto_parent(&mut self) -> bool {
+        while let Some(parent) = self.node_or_token.parent() {
+            self.node_or_token = NodeOrToken::Node(parent);
+
+            if is_flatten(self.node_or_token) {
+                continue;
+            }
+
+            return true;
+        }
+
+        false
     }
 
     pub fn goto_next_sibling(&mut self) -> bool {
@@ -205,28 +227,6 @@ impl<'a> TreeCursor<'a> {
             true
         } else {
             false
-        }
-    }
-
-    pub fn goto_parent(&mut self) -> bool {
-        while let Some(parent) = self.node_or_token.parent() {
-            self.node_or_token = NodeOrToken::Node(parent);
-
-            if is_flatten(self.node_or_token) {
-                continue;
-            }
-
-            return true;
-        }
-
-        false
-    }
-
-    pub fn node(&self) -> Node<'a> {
-        Node {
-            input: self.input,
-            range_map: Rc::clone(&self.range_map),
-            node_or_token: self.node_or_token,
         }
     }
 
