@@ -38,6 +38,12 @@ pub struct Range {
     pub end_col: usize,
 }
 
+impl std::fmt::Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[({}, {})-({}, {})]", self.start_row, self.start_col, self.end_row, self.end_col)
+    }
+}
+
 fn is_flatten_all(node_or_token: NodeOrToken) -> bool {
     matches!(
         node_or_token.kind(),
