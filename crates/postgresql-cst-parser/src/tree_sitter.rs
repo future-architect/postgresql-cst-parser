@@ -151,47 +151,18 @@ impl<'a> TreeCursor<'a> {
     }
 
     pub fn goto_first_child(&mut self) -> bool {
-        if self.node_or_token.as_node().is_none() {
-            return false;
-        }
-
-        let mut cursor = self.clone();
-
-        // TODO 書き捨てコードなのでリファクタ
-        loop {
-            if let Some(node) = cursor.node_or_token.as_node() {
-                if let Some(child) = node.first_child_or_token() {
-                    cursor.node_or_token = child;
-
-                    if is_skip(child.kind()) || is_flatten(child) {
-                        continue;
-                    }
-
-                    self.node_or_token = cursor.node_or_token;
-                    return true;
-                }
-            }
-            if let Some(sibling) = cursor.node_or_token.next_sibling_or_token() {
-                cursor.node_or_token = sibling;
-
-                if is_skip(sibling.kind()) || is_flatten(sibling) {
-                    continue;
-                }
-
+        if let Some(current_node) = self.node_or_token.as_node() {
+            if let Some(child) = current_node.first_child_or_token() {
+                self.node_or_token = child;
                 return true;
-            } else {
-                cursor.node_or_token = NodeOrToken::Node(cursor.node_or_token.parent().unwrap());
             }
         }
+        false
     }
 
     pub fn goto_parent(&mut self) -> bool {
-        while let Some(parent) = self.node_or_token.parent() {
+        if let Some(parent) = self.node_or_token.parent() {
             self.node_or_token = NodeOrToken::Node(parent);
-
-            if is_flatten(self.node_or_token) {
-                continue;
-            }
 
             return true;
         }
@@ -200,35 +171,35 @@ impl<'a> TreeCursor<'a> {
     }
 
     pub fn goto_next_sibling(&mut self) -> bool {
-        let mut cursor = self.clone();
-
-        loop {
-            while let Some(sibling) = cursor.node_or_token.next_sibling_or_token() {
-                cursor.node_or_token = sibling;
-
-                if is_skip(sibling.kind()) {
-                    continue;
-                }
-
-                if is_flatten(sibling) {
-                    cursor.goto_first_child();
-                }
-
-                self.node_or_token = cursor.node_or_token;
-                return true;
-            }
-
-            if let Some(parent) = cursor.node_or_token.parent() {
-                if !is_flatten(NodeOrToken::Node(parent)) {
-                    return false;
-                }
-
-                cursor.node_or_token = NodeOrToken::Node(parent);
-            } else {
-                return false;
-            }
+        if let Some(sibling) = self.node_or_token.next_sibling_or_token() {
+            self.node_or_token = sibling;
+            return true;
         }
+        false
     }
+
+    ///
+    /// These methods are unused in uroborosql-fmt
+    ///
+    // pub fn field_id(&self)-> Option<u16> {
+    //     unimplemented!()
+    // }
+
+    // pub fn field_name(&self)-> Option<&'static str> {
+    //     unimplemented!()
+    // }
+
+    // pub fn goto_first_child_for_byte(&mut self, index: usize) -> Option<usize> {
+    //     unimplemented!()
+    // }
+
+    // pub fn goto_first_child_for_point(&mut self, point: Point) -> Option<usize> {
+    //  unimplemented!()
+    // }
+
+    // pub fn reset(&mut self, node: Node<'a>) {
+    //     unimplemented!()
+    // }
 
     pub fn goto_direct_prev_sibling(&mut self) -> bool {
         if let Some(prev) = self.node_or_token.prev_sibling_or_token() {
@@ -335,7 +306,7 @@ pub fn dump_as_tree_sitter_like(input: &str, node: &ResolvedNode) {
 
     let mut depth = 0;
     loop {
-        dbg!(cursor.node().kind(), cursor.node().text(), depth);
+        // dbg!(cursor.node().kind(), cursor.node().text(), depth);
 
         if cursor.goto_first_child() {
             depth += 1;
@@ -357,7 +328,12 @@ pub fn dump_as_tree_sitter_like(input: &str, node: &ResolvedNode) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cst, tree_sitter::dump_as_tree_sitter_like, ParseError};
+    use crate::{
+        cst, parse,
+        syntax_kind::SyntaxKind,
+        tree_sitter::{as_tree_sitter_cursor, convert_cst, dump_as_tree_sitter_like, TreeCursor},
+        ParseError,
+    };
 
     #[test]
     fn test() -> Result<(), ParseError> {
@@ -371,10 +347,178 @@ FROM
 ,	B"#;
         // dbg!(input);
         let node = cst::parse(input)?;
-        dbg!(&node);
+        // dbg!(&node);
 
         dump_as_tree_sitter_like(input, &node);
 
         Ok(())
+    }
+
+    #[test]
+    fn tree_sitter_like_traverse() {
+        const UNIT: usize = 2;
+
+        fn visit(cursor: &mut TreeCursor, depth: usize, src: &str) {
+            (0..(depth * UNIT)).for_each(|_| print!(" "));
+
+            print!("{}", cursor.node().kind());
+
+            if cursor.node().child_count() == 0 {
+                // print!(" \"{}\"", cursor.node().utf8_text(src.as_bytes()).unwrap());
+                print!(" \"{}\"", cursor.node().text().escape_default());
+            }
+            println!(
+                // " [{}-{}]",
+                // cursor.node().start_position(),
+                // cursor.node().end_position()
+                " {}",
+                cursor.node().range()
+            );
+
+            // 子供を走査
+            if cursor.goto_first_child() {
+                visit(cursor, depth + 1, src);
+                while cursor.goto_next_sibling() {
+                    visit(cursor, depth + 1, src);
+                }
+                cursor.goto_parent();
+            }
+        }
+
+        let src = r#"
+-- comment
+SELECT
+	1 as X
+,	2 -- comment
+,	3
+FROM
+	A
+,	B"#;
+
+        let node = parse(&src).unwrap();
+        let node = convert_cst(&node);
+        let mut cursor = as_tree_sitter_cursor(src, &node);
+
+        visit(&mut cursor, 0, &src);
+    }
+
+    #[test]
+    fn goto_first_child_from_node() {
+        let src = "select a, b, c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+        let first_select = root
+            .descendants()
+            .find(|x| x.kind() == SyntaxKind::simple_select)
+            .unwrap();
+
+        let mut cursor = as_tree_sitter_cursor(src, &first_select);
+        assert_eq!(cursor.node().kind(), SyntaxKind::simple_select);
+
+        assert!(cursor.goto_first_child());
+        assert_eq!(cursor.node().kind(), SyntaxKind::SELECT);
+    }
+
+    #[test]
+    fn goto_first_child_from_token() {
+        let src = "select a, b, c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+        let column_id_node = root
+            .descendants()
+            .find(|x| x.kind() == SyntaxKind::ColId)
+            .unwrap();
+
+        let mut cursor = as_tree_sitter_cursor(src, &column_id_node);
+        cursor.goto_first_child();
+        assert_eq!(cursor.node().kind(), SyntaxKind::IDENT);
+
+        assert!(!cursor.goto_first_child());
+        assert_eq!(cursor.node().kind(), SyntaxKind::IDENT);
+    }
+
+    #[test]
+    fn goto_parent_from_root() {
+        let src = "select a, b, c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+
+        let mut cursor = as_tree_sitter_cursor(src, &root);
+        assert_eq!(cursor.node().kind(), SyntaxKind::Root);
+
+        assert!(!cursor.goto_parent());
+        assert_eq!(cursor.node().kind(), SyntaxKind::Root);
+    }
+
+    #[test]
+    fn goto_parent_from_node() {
+        let src = "select a, b, c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+
+        let target_element = root
+            .descendants()
+            .find(|x| x.kind() == SyntaxKind::target_el)
+            .unwrap();
+        let mut cursor = as_tree_sitter_cursor(src, &target_element);
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
+
+        assert!(cursor.goto_parent());
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_list);
+    }
+
+    #[test]
+    fn goto_parent_from_token() {
+        let src = "select a, b, c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+
+        let column_id_node = root
+            .descendants()
+            .find(|x| x.kind() == SyntaxKind::ColId)
+            .unwrap();
+        let mut cursor = as_tree_sitter_cursor(src, &column_id_node);
+
+        cursor.goto_first_child();
+        assert_eq!(cursor.node().kind(), SyntaxKind::IDENT);
+
+        assert!(cursor.goto_parent());
+        assert_eq!(cursor.node().kind(), SyntaxKind::ColId);
+    }
+
+    #[test]
+    fn goto_next_sibling() {
+        let src = "select a,b,c from tbl;";
+        let root = convert_cst(&parse(&src).unwrap());
+
+        let target_element = root
+            .descendants()
+            .find(|x| x.kind() == SyntaxKind::target_el)
+            .unwrap();
+        let mut cursor = as_tree_sitter_cursor(src, &target_element);
+        //
+        // - target_list
+        //   - target_el (1)
+        //   - Comma ","
+        //   - target_el (2)
+        //   - Comma ","
+        //   - target_el (3)
+        //
+
+        // 1
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
+
+        assert!(cursor.goto_next_sibling());
+        assert_eq!(cursor.node().kind(), SyntaxKind::Comma);
+
+        // 2
+        assert!(cursor.goto_next_sibling());
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
+
+        assert!(cursor.goto_next_sibling());
+        assert_eq!(cursor.node().kind(), SyntaxKind::Comma);
+
+        // 3
+        assert!(cursor.goto_next_sibling());
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
+
+        // No more siblings
+        assert!(!cursor.goto_next_sibling());
+        assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
     }
 }
