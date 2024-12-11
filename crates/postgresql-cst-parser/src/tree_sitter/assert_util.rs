@@ -3,23 +3,21 @@ use crate::{syntax_kind::SyntaxKind, ResolvedNode};
 /// Asserts that there is at least one node of the specified `SyntaxKind` in the given syntax tree.
 pub fn assert_exists(root: &ResolvedNode, kind: SyntaxKind) {
     let exists = root.descendants().any(|node| node.kind() == kind);
-    if !exists {
-        panic!(
-            "Expected at least one node of kind {:?}, but none was found.",
-            kind
-        );
-    }
+    assert!(
+        exists,
+        "Expected at least one node of kind {:?}, but none was found.",
+        kind
+    )
 }
 
 /// Asserts that there are no nodes of the specified `SyntaxKind` in the given syntax tree.
 pub fn assert_not_exists(root: &ResolvedNode, kind: SyntaxKind) {
     let exists = root.descendants().any(|node| node.kind() == kind);
-    if exists {
-        panic!(
-            "Expected no nodes of kind {:?}, but at least one was found.",
-            kind
-        );
-    }
+    assert!(
+        !exists,
+        "Expected no nodes of kind {:?}, but at least one was found.",
+        kind
+    )
 }
 
 /// Asserts that the exact number of nodes of the specified `SyntaxKind` matches the given count.
