@@ -48,43 +48,43 @@ impl std::fmt::Display for Range {
     }
 }
 
-fn is_flatten_all(node_or_token: NodeOrToken) -> bool {
-    matches!(
-        node_or_token.kind(),
-        SyntaxKind::parse_toplevel
-            | SyntaxKind::stmtmulti
-            | SyntaxKind::toplevel_stmt
-            | SyntaxKind::stmt
-            | SyntaxKind::select_clause
-            | SyntaxKind::select_with_parens
-            | SyntaxKind::select_no_parens
-            | SyntaxKind::simple_select
-            | SyntaxKind::opt_target_list
-            // | SyntaxKind::relation_expr
-            // | SyntaxKind::extended_relation_expr
-            // | SyntaxKind::qualified_name
-            // | SyntaxKind::indirection
-            // | SyntaxKind::indirection_el
-            // | SyntaxKind::table_ref
-            | SyntaxKind::alias_clause
-            | SyntaxKind::opt_alias_clause
-    )
-}
+// fn is_flatten_all(node_or_token: NodeOrToken) -> bool {
+//     matches!(
+//         node_or_token.kind(),
+//         SyntaxKind::parse_toplevel
+//             | SyntaxKind::stmtmulti
+//             | SyntaxKind::toplevel_stmt
+//             | SyntaxKind::stmt
+//             | SyntaxKind::select_clause
+//             | SyntaxKind::select_with_parens
+//             | SyntaxKind::select_no_parens
+//             | SyntaxKind::simple_select
+//             | SyntaxKind::opt_target_list
+//             // | SyntaxKind::relation_expr
+//             // | SyntaxKind::extended_relation_expr
+//             // | SyntaxKind::qualified_name
+//             // | SyntaxKind::indirection
+//             // | SyntaxKind::indirection_el
+//             // | SyntaxKind::table_ref
+//             | SyntaxKind::alias_clause
+//             | SyntaxKind::opt_alias_clause
+//     )
+// }
 
-fn is_flatten_except_top(node_or_token: NodeOrToken) -> bool {
-    matches!(
-        node_or_token.kind(),
-        SyntaxKind::target_list | SyntaxKind::from_list
-    ) && node_or_token.parent().unwrap().kind() == node_or_token.kind()
-}
+// fn is_flatten_except_top(node_or_token: NodeOrToken) -> bool {
+//     matches!(
+//         node_or_token.kind(),
+//         SyntaxKind::target_list | SyntaxKind::from_list
+//     ) && node_or_token.parent().unwrap().kind() == node_or_token.kind()
+// }
 
-fn is_flatten(node_or_token: NodeOrToken) -> bool {
-    is_flatten_all(node_or_token) || is_flatten_except_top(node_or_token)
-}
+// fn is_flatten(node_or_token: NodeOrToken) -> bool {
+//     is_flatten_all(node_or_token) || is_flatten_except_top(node_or_token)
+// }
 
-fn is_skip(kind: SyntaxKind) -> bool {
-    matches!(kind, SyntaxKind::Whitespace)
-}
+// fn is_skip(kind: SyntaxKind) -> bool {
+//     matches!(kind, SyntaxKind::Whitespace)
+// }
 
 impl<'a> Node<'a> {
     pub fn walk(&self) -> TreeCursor<'a> {
