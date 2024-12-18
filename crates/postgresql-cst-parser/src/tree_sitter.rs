@@ -2,7 +2,7 @@
 mod assert_util;
 
 mod convert;
-pub use convert::convert_cst;
+pub use convert::get_ts_tree_and_range_map;
 
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
@@ -223,48 +223,55 @@ impl<'a> TreeCursor<'a> {
 }
 
 pub fn as_tree_sitter_cursor<'a>(input: &'a str, node: &'a ResolvedNode) -> TreeCursor<'a> {
-    let mut range_map = HashMap::new();
+    // let mut range_map = HashMap::new();
 
-    let new_line_indices: Vec<_> = input
-        .char_indices()
-        .filter(|&(_, c)| c == '\n')
-        .map(|(i, _)| i)
-        .collect();
+    // // 改行がある場所のインデックスのベクタ
+    // // つまり、(v[n], v[n+1]) がソースコード上における `n 行目` の範囲
+    // // n: 0..
+    // let new_line_indices: Vec<_> = input
+    //     .char_indices()
+    //     .filter(|&(_, c)| c == '\n')
+    //     .map(|(i, _)| i)
+    //     .collect();
 
-    traverse_pre_order(node, |node_or_token| {
-        let text_range = node_or_token.text_range();
+    // traverse_pre_order(node, |node_or_token| {
+    //     let text_range = node_or_token.text_range();
 
-        let before_start_new_line_count =
-            match new_line_indices.binary_search(&text_range.start().into()) {
-                Ok(i) => i,
-                Err(i) => i,
-            };
+    //     // text_range の初期部分が、改行のどの部分に現れるか
+    //     let before_start_new_line_count =
+    //         match new_line_indices.binary_search(&text_range.start().into()) {
+    //             Ok(i) => i,
+    //             Err(i) => i,
+    //         };
 
-        let before_end_new_line_count =
-            match new_line_indices.binary_search(&text_range.end().into()) {
-                Ok(i) => i,
-                Err(i) => i,
-            };
+    //     let before_end_new_line_count =
+    //         match new_line_indices.binary_search(&text_range.end().into()) {
+    //             Ok(i) => i,
+    //             Err(i) => i,
+    //         };
 
-        range_map.insert(
-            node_or_token.text_range(),
-            Range {
-                start_row: before_start_new_line_count,
-                start_col: usize::from(node_or_token.text_range().start())
-                    - match before_start_new_line_count {
-                        0 => 0,
-                        i => new_line_indices[i - 1] + 1,
-                    },
-                end_row: before_end_new_line_count,
-                end_col: usize::from(node_or_token.text_range().end())
-                    - 1
-                    - match before_end_new_line_count {
-                        0 => 0,
-                        i => new_line_indices[i - 1],
-                    },
-            },
-        );
-    });
+    //     range_map.insert(
+    //         node_or_token.text_range(),
+    //         Range {
+    //             start_row: before_start_new_line_count,
+    //             start_col: usize::from(node_or_token.text_range().start())
+    //                 - match before_start_new_line_count {
+    //                     0 => 0,
+    //                     // ひとつ前のインデックス（直前の改行文字）+1
+    //                     i => new_line_indices[i - 1] + 1, // +1 は改行文字分？
+    //                 },
+    //             end_row: before_end_new_line_count,
+    //             end_col: usize::from(node_or_token.text_range().end())
+    //                 - 1
+    //                 - match before_end_new_line_count {
+    //                     0 => 0,
+    //                     i => new_line_indices[i - 1],
+    //                 },
+    //         },
+    //     );
+    // });
+    // 
+    let (node,range_map) = get_ts_tree_and_range_map(&input, &node);
 
     TreeCursor {
         input,
@@ -335,7 +342,7 @@ mod tests {
     use crate::{
         cst, parse,
         syntax_kind::SyntaxKind,
-        tree_sitter::{as_tree_sitter_cursor, convert_cst, dump_as_tree_sitter_like, TreeCursor},
+        tree_sitter::{as_tree_sitter_cursor, dump_as_tree_sitter_like, get_ts_tree_and_range_map, TreeCursor},
         ParseError,
     };
 
@@ -400,7 +407,7 @@ FROM
 ,	B"#;
 
         let node = parse(&src).unwrap();
-        let node = convert_cst(&node);
+        let (node, _) = get_ts_tree_and_range_map(&src, &node);
         let mut cursor = as_tree_sitter_cursor(src, &node);
 
         visit(&mut cursor, 0, &src);
@@ -409,7 +416,7 @@ FROM
     #[test]
     fn goto_first_child_from_node() {
         let src = "select a, b, c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
         let first_select = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::simple_select)
@@ -425,7 +432,7 @@ FROM
     #[test]
     fn goto_first_child_from_token() {
         let src = "select a, b, c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
         let column_id_node = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::ColId)
@@ -442,7 +449,7 @@ FROM
     #[test]
     fn goto_parent_from_root() {
         let src = "select a, b, c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let mut cursor = as_tree_sitter_cursor(src, &root);
         assert_eq!(cursor.node().kind(), SyntaxKind::Root);
@@ -454,7 +461,7 @@ FROM
     #[test]
     fn goto_parent_from_node() {
         let src = "select a, b, c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let target_element = root
             .descendants()
@@ -470,7 +477,7 @@ FROM
     #[test]
     fn goto_parent_from_token() {
         let src = "select a, b, c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let column_id_node = root
             .descendants()
@@ -488,7 +495,7 @@ FROM
     #[test]
     fn goto_next_sibling() {
         let src = "select a,b,c from tbl;";
-        let root = convert_cst(&parse(&src).unwrap());
+        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let target_element = root
             .descendants()

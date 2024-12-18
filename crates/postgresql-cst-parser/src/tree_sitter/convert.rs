@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode, text};
+use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode};
 
@@ -26,6 +26,7 @@ pub fn get_ts_tree_and_range_map(
         &NodeOrToken::Node(root),
         &new_line_indices,
     ));
+
     builder.start_node(SyntaxKind::Root);
     // process subtrees.
     // These Nodes will be ignored:
@@ -54,7 +55,7 @@ pub fn get_ts_tree_and_range_map(
         row_column_ranges.len()
     );
 
-    let mut range_map = HashMap::new();
+    let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
     let mut range_iter = row_column_ranges.iter();
     traverse_pre_order(&new_root, |node_or_token| {
         if let Some(original_range) = range_iter.next() {
@@ -104,40 +105,6 @@ fn get_row_column_range(
     }
 }
 
-/// Converts the given CST into a node structure and hierarchy that closely matches what `tree-sitter-sql` produces.
-pub fn convert_cst(src: &str, root: &ResolvedNode) -> ResolvedNode {
-    let mut builder = GreenNodeBuilder::new();
-    let mut row_column_ranges: Vec<RowColumnRange> = vec![];
-
-    // Build `Root` node
-    builder.start_node(SyntaxKind::Root);
-    walk_and_build(
-        src,
-        &vec![1_usize],
-        &mut builder,
-        &mut row_column_ranges,
-        root,
-    );
-    builder.finish_node();
-
-    let (tree, cache) = builder.finish();
-    let resolved_node =
-        SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap());
-
-    let mut range_map = HashMap::new();
-    let mut ranges = row_column_ranges.iter();
-    traverse_pre_order(&resolved_node, |node_or_token| {
-        if let Some(original_range) = ranges.next() {
-            // clone?
-            range_map.insert(node_or_token.text_range(), original_range.clone());
-        } else {
-            unreachable!()
-        }
-    });
-
-    resolved_node
-}
-
 /// Traverse the CST and rewrite certain nodes
 /// e.g. flatten list node, remove option node
 fn walk_and_build(
@@ -179,11 +146,12 @@ fn walk_and_build(
                             );
                         } else {
                             // Node is target for flattening, but at the top level of the nest
-                            println!("push1: {child_kind}");
+                            
                             row_column_ranges.push(get_row_column_range(
                                 &NodeOrToken::Node(&child_node),
                                 &new_line_indices,
                             ));
+
                             builder.start_node(child_node.kind());
                             walk_and_build(
                                 input,
@@ -214,7 +182,6 @@ fn walk_and_build(
                         //       +- child_1                                          +- child_2
                         //       +- child_1
                         //
-                        println!("removal: opt_target_list");
                         walk_and_build(
                             input,
                             new_line_indices,
@@ -226,8 +193,6 @@ fn walk_and_build(
 
                     // Default pattern
                     _ => {
-                        let k = child_node.kind();
-                        println!("push2: {k}");
                         row_column_ranges.push(get_row_column_range(
                             &NodeOrToken::Node(&child_node),
                             &new_line_indices,
@@ -253,8 +218,6 @@ fn walk_and_build(
                     continue;
                 }
 
-                let k = child_token.kind();
-                println!("push3: {k}");
                 row_column_ranges.push(get_row_column_range(
                     &NodeOrToken::Token(child_token),
                     &new_line_indices,
@@ -267,7 +230,7 @@ fn walk_and_build(
 
 #[cfg(test)]
 mod tests {
-    use crate::{cst, tree_sitter::convert::convert_cst};
+    use crate::{cst, tree_sitter::convert::get_ts_tree_and_range_map};
 
     #[test]
     fn whitespace_is_removed() {
@@ -281,7 +244,7 @@ FROM
 ,	B"#;
 
         let root = cst::parse(&original).unwrap();
-        let new_root = convert_cst(&original, &root);
+        let (new_root, _) = get_ts_tree_and_range_map(&original, &root);
 
         let whitespace_removed: String = original.split_whitespace().collect();
         dbg!(&whitespace_removed);
@@ -294,7 +257,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_exists, assert_not_exists},
-                convert::convert_cst,
+                convert::get_ts_tree_and_range_map,
             },
         };
 
@@ -304,7 +267,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_exists(&root, SyntaxKind::opt_target_list);
 
-            let new_root = convert_cst(input, &root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_not_exists(&new_root, SyntaxKind::opt_target_list);
         }
     }
@@ -315,7 +278,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_no_direct_nested_kind, assert_node_count},
-                convert::convert_cst,
+                convert::get_ts_tree_and_range_map,
             },
         };
 
@@ -326,7 +289,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_node_count(&root, SyntaxKind::target_list, 3);
 
-            let new_root = convert_cst(input, &root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_node_count(&new_root, SyntaxKind::target_list, 1);
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
         }
@@ -335,7 +298,7 @@ FROM
         fn no_nested_stmtmulti() {
             let input = "select a,b,c;\nselect d,e from t;";
             let root = cst::parse(input).unwrap();
-            let new_root = convert_cst(&input, &root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::stmtmulti);
         }
@@ -344,7 +307,7 @@ FROM
         fn no_nested_from_list() {
             let input = "select * from t1, t2;";
             let root = cst::parse(input).unwrap();
-            let new_root = convert_cst(input, &root);
+            let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::from_list);
         }
