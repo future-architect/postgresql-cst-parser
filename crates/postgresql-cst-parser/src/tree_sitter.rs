@@ -40,7 +40,11 @@ pub struct Range {
 
 impl std::fmt::Display for Range {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[({}, {})-({}, {})]", self.start_row, self.start_col, self.end_row, self.end_col)
+        write!(
+            f,
+            "[({}, {})-({}, {})]",
+            self.start_row, self.start_col, self.end_row, self.end_col
+        )
     }
 }
 
