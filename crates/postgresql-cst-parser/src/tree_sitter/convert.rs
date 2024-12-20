@@ -4,7 +4,7 @@ use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode};
 
-use super::traverse_pre_order;
+use super::{traverse_pre_order, Point};
 
 type SequentialRange = cstree::text::TextRange; // Range representation by cstree (Sequential bytes)
 type RowColumnRange = super::Range; // tree-sitter like range representation (Rows and Columns)
@@ -197,12 +197,7 @@ fn walk_and_build(
                         //       +- child_1                                          +- child_2
                         //       +- child_1
                         //
-                        walk_and_build(
-                            child_node,
-                            new_line_indices,
-                            builder,
-                            row_column_ranges,
-                        );
+                        walk_and_build(child_node, new_line_indices, builder, row_column_ranges);
                     }
 
                     // [Node: Default]
@@ -212,12 +207,7 @@ fn walk_and_build(
                             &new_line_indices,
                         ));
                         builder.start_node(child_node.kind());
-                        walk_and_build(
-                            child_node,
-                            new_line_indices,
-                            builder,
-                            row_column_ranges,
-                        );
+                        walk_and_build(child_node, new_line_indices, builder, row_column_ranges);
                         builder.finish_node();
                     }
                 }
