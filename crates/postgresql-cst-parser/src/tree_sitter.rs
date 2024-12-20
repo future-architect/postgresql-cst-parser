@@ -345,11 +345,11 @@ select
         let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
         let first_select = root
             .descendants()
-            .find(|x| x.kind() == SyntaxKind::simple_select)
+            .find(|x| x.kind() == SyntaxKind::SelectStmt)
             .unwrap();
 
         let mut cursor = as_tree_sitter_cursor(src, &first_select, range_map);
-        assert_eq!(cursor.node().kind(), SyntaxKind::simple_select);
+        assert_eq!(cursor.node().kind(), SyntaxKind::SelectStmt);
 
         assert!(cursor.goto_first_child());
         assert_eq!(cursor.node().kind(), SyntaxKind::SELECT);
