@@ -140,8 +140,8 @@ fn walk_and_build(
         match child {
             NodeOrToken::Node(child_node) => {
                 match child_node.kind() {
-                    child_kind @ (SyntaxKind::stmtmulti
-                    | SyntaxKind::target_list
+                    child_kind @ (
+                    SyntaxKind::target_list
                     | SyntaxKind::from_list) => {
                         if parent_kind == child_kind {
                             // [Node: Flatten]
@@ -179,14 +179,13 @@ fn walk_and_build(
                         }
                     }
 
-                    // SyntaxKind::parse_toplevel
-                    // | SyntaxKind::stmtmulti
-                    // | SyntaxKind::toplevel_stmt
-                    // | SyntaxKind::stmt
-                    // | SyntaxKind::select_no_parens
-                    // | SyntaxKind::simple_select
-                    // |
-                    SyntaxKind::opt_target_list => {
+                    SyntaxKind::parse_toplevel
+                    | SyntaxKind::stmtmulti
+                    | SyntaxKind::toplevel_stmt
+                    | SyntaxKind::stmt
+                    | SyntaxKind::select_no_parens
+                    | SyntaxKind::simple_select
+                    | SyntaxKind::opt_target_list => {
                         // [Node: Removal]
                         //
                         // Ignore current node, and continue building its children.
