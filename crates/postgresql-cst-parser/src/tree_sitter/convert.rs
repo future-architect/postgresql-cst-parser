@@ -40,7 +40,7 @@ pub fn get_ts_tree_and_range_map(
         // 1. Add new Node (or Token) to New Tree
         // 2. Create tree-sitter compatible `Range`s based on the original text.
         walk_and_build(
-            &root,
+            root,
             &new_line_indices,
             &mut builder,
             &mut row_column_ranges,
@@ -59,10 +59,7 @@ pub fn get_ts_tree_and_range_map(
     (new_root, range_map)
 }
 
-fn get_row_column_range(
-    node_or_token: &NodeOrToken,
-    new_line_indices: &Vec<usize>,
-) -> RowColumnRange {
+fn get_row_column_range(node_or_token: &NodeOrToken, new_line_indices: &[usize]) -> RowColumnRange {
     let text_range: SequentialRange = node_or_token.text_range();
 
     let before_start_new_line_count =
@@ -146,7 +143,7 @@ fn create_mapping(
 
     let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
     let mut range_iter = row_column_ranges.iter();
-    traverse_pre_order(&root, |node_or_token| {
+    traverse_pre_order(root, |node_or_token| {
         if let Some(original_range) = range_iter.next() {
             let byte_range = node_or_token.text_range();
             range_map.insert(byte_range, original_range.clone());
@@ -194,8 +191,8 @@ fn walk_and_build(
                             // Node is target for flattening, but at the top level of the nest
 
                             row_column_ranges.push(get_row_column_range(
-                                &NodeOrToken::Node(&child_node),
-                                &new_line_indices,
+                                &NodeOrToken::Node(child_node),
+                                new_line_indices,
                             ));
 
                             builder.start_node(child_node.kind());
@@ -232,8 +229,8 @@ fn walk_and_build(
                     // [Node: Default]
                     _ => {
                         row_column_ranges.push(get_row_column_range(
-                            &NodeOrToken::Node(&child_node),
-                            &new_line_indices,
+                            &NodeOrToken::Node(child_node),
+                            new_line_indices,
                         ));
                         builder.start_node(child_node.kind());
                         walk_and_build(child_node, new_line_indices, builder, row_column_ranges);
@@ -253,7 +250,7 @@ fn walk_and_build(
                 // [Token: Default]
                 row_column_ranges.push(get_row_column_range(
                     &NodeOrToken::Token(child_token),
-                    &new_line_indices,
+                    new_line_indices,
                 ));
                 builder.token(child_token.kind(), child_token.text());
             }
