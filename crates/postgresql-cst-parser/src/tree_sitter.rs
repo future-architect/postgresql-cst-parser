@@ -196,38 +196,6 @@ pub fn as_tree_sitter_cursor<'a>(
     }
 }
 
-fn traverse_pre_order<F: FnMut(NodeOrToken)>(node: &ResolvedNode, mut f: F) {
-    let mut node_or_token = NodeOrToken::Node(node);
-
-    loop {
-        f(node_or_token);
-
-        if let Some(node) = node_or_token.as_node() {
-            if let Some(child) = node.first_child_or_token() {
-                node_or_token = child;
-                continue;
-            }
-        }
-
-        if let Some(sibling) = node_or_token.next_sibling_or_token() {
-            node_or_token = sibling;
-        } else {
-            loop {
-                if let Some(parent) = node_or_token.parent() {
-                    node_or_token = NodeOrToken::Node(parent);
-                } else {
-                    return;
-                }
-
-                if let Some(sibling) = node_or_token.next_sibling_or_token() {
-                    node_or_token = sibling;
-                    break;
-                }
-            }
-        }
-    }
-}
-
 pub fn dump_as_tree_sitter_like(input: &str, node: &ResolvedNode) {
     let (node, range_map) = get_ts_tree_and_range_map(input, node);
     let mut cursor = as_tree_sitter_cursor(input, &node, range_map);

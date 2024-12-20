@@ -4,7 +4,7 @@ use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
 
 use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode};
 
-use super::{traverse_pre_order, Point};
+use super::Point;
 
 type SequentialRange = cstree::text::TextRange; // Range representation by cstree (Sequential bytes)
 type RowColumnRange = super::Range; // tree-sitter like range representation (Rows and Columns)
@@ -103,6 +103,38 @@ fn get_row_column_range(
     }
 }
 
+fn traverse_pre_order<F: FnMut(NodeOrToken)>(node: &ResolvedNode, mut f: F) {
+    let mut node_or_token = NodeOrToken::Node(node);
+
+    loop {
+        f(node_or_token);
+
+        if let Some(node) = node_or_token.as_node() {
+            if let Some(child) = node.first_child_or_token() {
+                node_or_token = child;
+                continue;
+            }
+        }
+
+        if let Some(sibling) = node_or_token.next_sibling_or_token() {
+            node_or_token = sibling;
+        } else {
+            loop {
+                if let Some(parent) = node_or_token.parent() {
+                    node_or_token = NodeOrToken::Node(parent);
+                } else {
+                    return;
+                }
+
+                if let Some(sibling) = node_or_token.next_sibling_or_token() {
+                    node_or_token = sibling;
+                    break;
+                }
+            }
+        }
+    }
+}
+
 fn create_mapping(
     root: &ResolvedNode,
     row_column_ranges: Vec<RowColumnRange>,
@@ -140,9 +172,7 @@ fn walk_and_build(
         match child {
             NodeOrToken::Node(child_node) => {
                 match child_node.kind() {
-                    child_kind @ (
-                    SyntaxKind::target_list
-                    | SyntaxKind::from_list) => {
+                    child_kind @ (SyntaxKind::target_list | SyntaxKind::from_list) => {
                         if parent_kind == child_kind {
                             // [Node: Flatten]
                             //
