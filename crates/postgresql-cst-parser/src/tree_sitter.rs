@@ -199,57 +199,11 @@ impl<'a> TreeCursor<'a> {
     }
 }
 
-pub fn as_tree_sitter_cursor<'a>(input: &'a str, node: &'a ResolvedNode) -> TreeCursor<'a> {
-    // let mut range_map = HashMap::new();
-
-    // // 改行がある場所のインデックスのベクタ
-    // // つまり、(v[n], v[n+1]) がソースコード上における `n 行目` の範囲
-    // // n: 0..
-    // let new_line_indices: Vec<_> = input
-    //     .char_indices()
-    //     .filter(|&(_, c)| c == '\n')
-    //     .map(|(i, _)| i)
-    //     .collect();
-
-    // traverse_pre_order(node, |node_or_token| {
-    //     let text_range = node_or_token.text_range();
-
-    //     // text_range の初期部分が、改行のどの部分に現れるか
-    //     let before_start_new_line_count =
-    //         match new_line_indices.binary_search(&text_range.start().into()) {
-    //             Ok(i) => i,
-    //             Err(i) => i,
-    //         };
-
-    //     let before_end_new_line_count =
-    //         match new_line_indices.binary_search(&text_range.end().into()) {
-    //             Ok(i) => i,
-    //             Err(i) => i,
-    //         };
-
-    //     range_map.insert(
-    //         node_or_token.text_range(),
-    //         Range {
-    //             start_row: before_start_new_line_count,
-    //             start_col: usize::from(node_or_token.text_range().start())
-    //                 - match before_start_new_line_count {
-    //                     0 => 0,
-    //                     // ひとつ前のインデックス（直前の改行文字）+1
-    //                     i => new_line_indices[i - 1] + 1, // +1 は改行文字分？
-    //                 },
-    //             end_row: before_end_new_line_count,
-    //             end_col: usize::from(node_or_token.text_range().end())
-    //                 - 1
-    //                 - match before_end_new_line_count {
-    //                     0 => 0,
-    //                     i => new_line_indices[i - 1],
-    //                 },
-    //         },
-    //     );
-    // });
-    // 
-    let (node,range_map) = get_ts_tree_and_range_map(&input, &node);
-
+pub fn as_tree_sitter_cursor<'a>(
+    input: &'a str,
+    node: &'a ResolvedNode,
+    range_map: HashMap<TextRange, Range>,
+) -> TreeCursor<'a> {
     TreeCursor {
         input,
         range_map: Rc::new(range_map),
@@ -290,11 +244,12 @@ fn traverse_pre_order<F: FnMut(NodeOrToken)>(node: &ResolvedNode, mut f: F) {
 }
 
 pub fn dump_as_tree_sitter_like(input: &str, node: &ResolvedNode) {
-    let mut cursor = as_tree_sitter_cursor(input, node);
+    let (node, range_map) = get_ts_tree_and_range_map(input, node);
+    let mut cursor = as_tree_sitter_cursor(input, &node, range_map);
 
     let mut depth = 0;
     loop {
-        // dbg!(cursor.node().kind(), cursor.node().text(), depth);
+        dbg!(cursor.node().kind(), cursor.node().text(), depth);
 
         if cursor.goto_first_child() {
             depth += 1;
@@ -319,7 +274,9 @@ mod tests {
     use crate::{
         cst, parse,
         syntax_kind::SyntaxKind,
-        tree_sitter::{as_tree_sitter_cursor, dump_as_tree_sitter_like, get_ts_tree_and_range_map, TreeCursor},
+        tree_sitter::{
+            as_tree_sitter_cursor, dump_as_tree_sitter_like, get_ts_tree_and_range_map, TreeCursor,
+        },
         ParseError,
     };
 
@@ -384,8 +341,8 @@ FROM
 ,	B"#;
 
         let node = parse(&src).unwrap();
-        let (node, _) = get_ts_tree_and_range_map(&src, &node);
-        let mut cursor = as_tree_sitter_cursor(src, &node);
+        let (node, range_map) = get_ts_tree_and_range_map(&src, &node);
+        let mut cursor = as_tree_sitter_cursor(src, &node, range_map);
 
         visit(&mut cursor, 0, &src);
     }
@@ -393,13 +350,13 @@ FROM
     #[test]
     fn goto_first_child_from_node() {
         let src = "select a, b, c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
         let first_select = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::simple_select)
             .unwrap();
 
-        let mut cursor = as_tree_sitter_cursor(src, &first_select);
+        let mut cursor = as_tree_sitter_cursor(src, &first_select, range_map);
         assert_eq!(cursor.node().kind(), SyntaxKind::simple_select);
 
         assert!(cursor.goto_first_child());
@@ -409,13 +366,13 @@ FROM
     #[test]
     fn goto_first_child_from_token() {
         let src = "select a, b, c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
         let column_id_node = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::ColId)
             .unwrap();
 
-        let mut cursor = as_tree_sitter_cursor(src, &column_id_node);
+        let mut cursor = as_tree_sitter_cursor(&src, column_id_node, range_map);
         cursor.goto_first_child();
         assert_eq!(cursor.node().kind(), SyntaxKind::IDENT);
 
@@ -426,11 +383,11 @@ FROM
     #[test]
     fn goto_parent_from_root() {
         let src = "select a, b, c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
-        let mut cursor = as_tree_sitter_cursor(src, &root);
+        let mut cursor = as_tree_sitter_cursor(src, &root, range_map);
+
         assert_eq!(cursor.node().kind(), SyntaxKind::Root);
-
         assert!(!cursor.goto_parent());
         assert_eq!(cursor.node().kind(), SyntaxKind::Root);
     }
@@ -438,13 +395,13 @@ FROM
     #[test]
     fn goto_parent_from_node() {
         let src = "select a, b, c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let target_element = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::target_el)
             .unwrap();
-        let mut cursor = as_tree_sitter_cursor(src, &target_element);
+        let mut cursor = as_tree_sitter_cursor(src, &target_element, range_map);
         assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
 
         assert!(cursor.goto_parent());
@@ -454,13 +411,13 @@ FROM
     #[test]
     fn goto_parent_from_token() {
         let src = "select a, b, c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let column_id_node = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::ColId)
             .unwrap();
-        let mut cursor = as_tree_sitter_cursor(src, &column_id_node);
+        let mut cursor = as_tree_sitter_cursor(src, &column_id_node, range_map);
 
         cursor.goto_first_child();
         assert_eq!(cursor.node().kind(), SyntaxKind::IDENT);
@@ -472,13 +429,13 @@ FROM
     #[test]
     fn goto_next_sibling() {
         let src = "select a,b,c from tbl;";
-        let (root, _) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
 
         let target_element = root
             .descendants()
             .find(|x| x.kind() == SyntaxKind::target_el)
             .unwrap();
-        let mut cursor = as_tree_sitter_cursor(src, &target_element);
+        let mut cursor = as_tree_sitter_cursor(src, &target_element, range_map);
         //
         // - target_list
         //   - target_el (1)

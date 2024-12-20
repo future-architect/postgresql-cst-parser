@@ -6,8 +6,8 @@ use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode
 
 use super::traverse_pre_order;
 
-type SequentialRange = cstree::text::TextRange; // Range representation by cstree
-type RowColumnRange = super::Range; // tree-sitter like range representation
+type SequentialRange = cstree::text::TextRange; // Range representation by cstree (Sequential bytes)
+type RowColumnRange = super::Range; // tree-sitter like range representation (Rows and Columns)
 
 pub fn get_ts_tree_and_range_map(
     src: &str,
@@ -16,57 +16,45 @@ pub fn get_ts_tree_and_range_map(
     let mut builder = GreenNodeBuilder::new();
     let mut row_column_ranges: Vec<RowColumnRange> = vec![];
 
-    let new_line_indices: Vec<_> = src
-        .char_indices()
-        .filter(|&(_, c)| c == '\n')
-        .map(|(i, _)| i)
-        .collect();
+    // Build new tree, and Collect row-column style Ranges
+    {
+        let new_line_indices: Vec<_> = src
+            .char_indices()
+            .filter(|&(_, c)| c == '\n')
+            .map(|(i, _)| i)
+            .collect();
 
-    row_column_ranges.push(get_row_column_range(
-        &NodeOrToken::Node(root),
-        &new_line_indices,
-    ));
+        row_column_ranges.push(get_row_column_range(
+            &NodeOrToken::Node(root),
+            &new_line_indices,
+        ));
 
-    builder.start_node(SyntaxKind::Root);
-    // process subtrees.
-    // These Nodes will be ignored:
-    //   - unneeded node
-    //   - nested node
-    //   - Whitespace token
-    //
-    // Each Node in the tree:
-    // 1. Add new Node (or Token) to New Tree
-    // 2. Create tree-sitter compatible `Range`s based on the original text.
-    walk_and_build(
-        src,
-        &new_line_indices,
-        &mut builder,
-        &mut row_column_ranges,
-        &root,
-    );
-    builder.finish_node();
+        builder.start_node(SyntaxKind::Root);
+        // process subtrees
+        // These Nodes will be ignored:
+        //   - Unneeded node
+        //   - Nested node
+        //   - Whitespace token
+        //
+        // Each Node in the tree:
+        // 1. Add new Node (or Token) to New Tree
+        // 2. Create tree-sitter compatible `Range`s based on the original text.
+        walk_and_build(
+            &root,
+            &new_line_indices,
+            &mut builder,
+            &mut row_column_ranges,
+        );
+        builder.finish_node();
+    }
 
+    // Get New tree
     let (tree, cache) = builder.finish();
     let new_root =
         SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap());
 
-    assert_eq!(
-        new_root.descendants_with_tokens().count(),
-        row_column_ranges.len()
-    );
-
-    let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
-    let mut range_iter = row_column_ranges.iter();
-    traverse_pre_order(&new_root, |node_or_token| {
-        if let Some(original_range) = range_iter.next() {
-            let byte_range = node_or_token.text_range();
-            range_map.insert(byte_range, original_range.clone());
-        } else {
-            unreachable!();
-        }
-    });
-
-    assert!(range_iter.next().is_none());
+    // Create a mapping between the TextRanges of nodes and tokens (in bytes) and the original text ranges (in rows and columns).
+    let range_map = create_mapping(&new_root, row_column_ranges);
 
     (new_root, range_map)
 }
@@ -105,14 +93,33 @@ fn get_row_column_range(
     }
 }
 
-/// Traverse the CST and rewrite certain nodes
-/// e.g. flatten list node, remove option node
+fn create_mapping(
+    root: &ResolvedNode,
+    row_column_ranges: Vec<RowColumnRange>,
+) -> HashMap<SequentialRange, RowColumnRange> {
+    assert_eq!(
+        root.descendants_with_tokens().count(),
+        row_column_ranges.len()
+    );
+
+    let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
+    let mut range_iter = row_column_ranges.iter();
+    traverse_pre_order(&root, |node_or_token| {
+        if let Some(original_range) = range_iter.next() {
+            let byte_range = node_or_token.text_range();
+            range_map.insert(byte_range, original_range.clone());
+        }
+    });
+
+    assert!(range_iter.next().is_none());
+    range_map
+}
+
 fn walk_and_build(
-    input: &str,
+    node: &ResolvedNode,
     new_line_indices: &Vec<usize>,
     builder: &mut GreenNodeBuilder<'static, 'static, PostgreSQLSyntax>,
     row_column_ranges: &mut Vec<RowColumnRange>,
-    node: &ResolvedNode,
 ) {
     use cstree::util::NodeOrToken;
 
@@ -127,7 +134,7 @@ fn walk_and_build(
                     | SyntaxKind::target_list
                     | SyntaxKind::from_list) => {
                         if parent_kind == child_kind {
-                            // [Flatten]
+                            // [Node: Flatten]
                             //
                             // This patten does not construct node.
                             //
@@ -138,15 +145,14 @@ fn walk_and_build(
                             //     +- ...
                             //
                             walk_and_build(
-                                input,
+                                child_node,
                                 new_line_indices,
                                 builder,
                                 row_column_ranges,
-                                child_node,
                             );
                         } else {
                             // Node is target for flattening, but at the top level of the nest
-                            
+
                             row_column_ranges.push(get_row_column_range(
                                 &NodeOrToken::Node(&child_node),
                                 &new_line_indices,
@@ -154,11 +160,10 @@ fn walk_and_build(
 
                             builder.start_node(child_node.kind());
                             walk_and_build(
-                                input,
+                                child_node,
                                 new_line_indices,
                                 builder,
                                 row_column_ranges,
-                                child_node,
                             );
                             builder.finish_node();
                         }
@@ -172,7 +177,7 @@ fn walk_and_build(
                     // | SyntaxKind::simple_select
                     // |
                     SyntaxKind::opt_target_list => {
-                        // [Removal]
+                        // [Node: Removal]
                         //
                         // Ignore current node, and continue building its children.
                         //
@@ -183,15 +188,14 @@ fn walk_and_build(
                         //       +- child_1
                         //
                         walk_and_build(
-                            input,
+                            child_node,
                             new_line_indices,
                             builder,
                             row_column_ranges,
-                            child_node,
                         );
                     }
 
-                    // Default pattern
+                    // [Node: Default]
                     _ => {
                         row_column_ranges.push(get_row_column_range(
                             &NodeOrToken::Node(&child_node),
@@ -199,18 +203,17 @@ fn walk_and_build(
                         ));
                         builder.start_node(child_node.kind());
                         walk_and_build(
-                            input,
+                            child_node,
                             new_line_indices,
                             builder,
                             row_column_ranges,
-                            child_node,
                         );
                         builder.finish_node();
                     }
                 }
             }
             NodeOrToken::Token(child_token) => {
-                // Remove Whitespace Token
+                // [Token: Removal]
                 // Note:
                 //   This process will break the lossless property of the CST.
                 //   `text()` for Nodes and `text_range()` for Nodes and Tokens will become incompatible with the original text.
@@ -218,6 +221,7 @@ fn walk_and_build(
                     continue;
                 }
 
+                // [Token: Default]
                 row_column_ranges.push(get_row_column_range(
                     &NodeOrToken::Token(child_token),
                     &new_line_indices,
@@ -247,7 +251,7 @@ FROM
         let (new_root, _) = get_ts_tree_and_range_map(&original, &root);
 
         let whitespace_removed: String = original.split_whitespace().collect();
-        dbg!(&whitespace_removed);
+        // Lossless property of the CST is broken.
         assert_eq!(new_root.text(), whitespace_removed.as_str());
     }
 
