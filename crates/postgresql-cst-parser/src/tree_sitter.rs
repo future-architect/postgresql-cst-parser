@@ -182,29 +182,6 @@ impl<'a> TreeCursor<'a> {
         false
     }
 
-    ///
-    /// These methods are unused in uroborosql-fmt
-    ///
-    // pub fn field_id(&self)-> Option<u16> {
-    //     unimplemented!()
-    // }
-
-    // pub fn field_name(&self)-> Option<&'static str> {
-    //     unimplemented!()
-    // }
-
-    // pub fn goto_first_child_for_byte(&mut self, index: usize) -> Option<usize> {
-    //     unimplemented!()
-    // }
-
-    // pub fn goto_first_child_for_point(&mut self, point: Point) -> Option<usize> {
-    //  unimplemented!()
-    // }
-
-    // pub fn reset(&mut self, node: Node<'a>) {
-    //     unimplemented!()
-    // }
-
     pub fn goto_direct_prev_sibling(&mut self) -> bool {
         if let Some(prev) = self.node_or_token.prev_sibling_or_token() {
             self.node_or_token = prev;
