@@ -137,9 +137,10 @@ impl<'a> Node<'a> {
 
     pub fn child_count(&self) -> usize {
         if let Some(node) = self.node_or_token.as_node() {
-            return node.children_with_tokens().count();
+            node.children_with_tokens().count()
+        } else {
+            0
         }
-        0
     }
 
     pub fn next_sibling(&self) -> Option<Node<'a>> {
@@ -189,19 +190,19 @@ impl<'a> TreeCursor<'a> {
     pub fn goto_parent(&mut self) -> bool {
         if let Some(parent) = self.node_or_token.parent() {
             self.node_or_token = NodeOrToken::Node(parent);
-
-            return true;
+            true
+        } else {
+            false
         }
-
-        false
     }
 
     pub fn goto_next_sibling(&mut self) -> bool {
         if let Some(sibling) = self.node_or_token.next_sibling_or_token() {
             self.node_or_token = sibling;
-            return true;
+            true
+        } else {
+            false
         }
-        false
     }
 
     pub fn goto_direct_prev_sibling(&mut self) -> bool {
@@ -487,5 +488,119 @@ FROM
         // No more siblings
         assert!(!cursor.goto_next_sibling());
         assert_eq!(cursor.node().kind(), SyntaxKind::target_el);
+    }
+
+    #[test]
+    fn range() {
+        let src = r#"
+-- comment
+SELECT
+	1 as X
+,	2 -- comment 2
+,	3
+FROM
+	A
+,	B"#;
+
+        let node = parse(&src).unwrap();
+        let (node, range_map) = get_ts_tree_and_range_map(&src, &node);
+
+        let mut cursor = as_tree_sitter_cursor(&src, &node, range_map);
+        let mut text_buf = String::from("\n");
+
+        'traverse: loop {
+            if cursor.node().child_count() == 0 {
+                text_buf.push_str(&format!("{}\n", cursor.node().range()));
+            }
+
+            if cursor.goto_first_child() {
+            } else if cursor.goto_next_sibling() {
+            } else {
+                loop {
+                    if !cursor.goto_parent() {
+                        break 'traverse;
+                    }
+
+                    if cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let expected = r#"
+[(1, 0)-(1, 10)]
+[(2, 0)-(2, 6)]
+[(3, 1)-(3, 2)]
+[(3, 3)-(3, 5)]
+[(3, 6)-(3, 7)]
+[(4, 0)-(4, 1)]
+[(4, 2)-(4, 3)]
+[(4, 4)-(4, 16)]
+[(5, 0)-(5, 1)]
+[(5, 2)-(5, 3)]
+[(6, 0)-(6, 4)]
+[(7, 1)-(7, 2)]
+[(8, 0)-(8, 1)]
+[(8, 2)-(8, 3)]
+"#;
+
+        assert_eq!(text_buf, expected);
+    }
+
+    #[test]
+    fn texts() {
+        let src = r#"
+-- comment
+SELECT
+	1 as X
+,	2 -- comment 2
+,	3
+FROM
+	A
+,	B"#;
+
+        let node = parse(&src).unwrap();
+        let (node, range_map) = get_ts_tree_and_range_map(&src, &node);
+
+        let mut cursor = as_tree_sitter_cursor(&src, &node, range_map);
+        let mut text_buf = Vec::new();
+
+        'traverse: loop {
+            if cursor.node().child_count() == 0 {
+                text_buf.push(cursor.node().text());
+            }
+
+            if cursor.goto_first_child() {
+            } else if cursor.goto_next_sibling() {
+            } else {
+                loop {
+                    if !cursor.goto_parent() {
+                        break 'traverse;
+                    }
+
+                    if cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut text_buf = text_buf.iter();
+        assert_eq!(text_buf.next(), Some(&"-- comment"));
+        assert_eq!(text_buf.next(), Some(&"SELECT"));
+        assert_eq!(text_buf.next(), Some(&"1"));
+        assert_eq!(text_buf.next(), Some(&"as"));
+        assert_eq!(text_buf.next(), Some(&"X"));
+        assert_eq!(text_buf.next(), Some(&","));
+        assert_eq!(text_buf.next(), Some(&"2"));
+        assert_eq!(text_buf.next(), Some(&"-- comment 2"));
+        assert_eq!(text_buf.next(), Some(&","));
+        assert_eq!(text_buf.next(), Some(&"3"));
+        assert_eq!(text_buf.next(), Some(&"FROM"));
+        assert_eq!(text_buf.next(), Some(&"A"));
+        assert_eq!(text_buf.next(), Some(&","));
+        assert_eq!(text_buf.next(), Some(&"B"));
+        assert_eq!(text_buf.next(), None);
     }
 }
