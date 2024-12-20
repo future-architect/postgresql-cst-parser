@@ -76,20 +76,30 @@ fn get_row_column_range(
         Err(i) => i,
     };
 
-    RowColumnRange {
-        start_row: before_start_new_line_count,
-        start_col: usize::from(text_range.start())
+    let start_position = Point {
+        row: before_start_new_line_count,
+        column: usize::from(text_range.start())
             - match before_start_new_line_count {
                 0 => 0,
                 i => new_line_indices[i - 1] + 1,
             },
-        end_row: before_end_new_line_count,
-        end_col: usize::from(text_range.end())
+    };
+
+    let end_position = Point {
+        row: before_end_new_line_count,
+        column: usize::from(text_range.end())
             - 1
             - match before_end_new_line_count {
                 0 => 0,
                 i => new_line_indices[i - 1],
             },
+    };
+
+    RowColumnRange {
+        start_byte: text_range.start().into(),
+        end_byte: text_range.end().into(),
+        start_position,
+        end_position,
     }
 }
 

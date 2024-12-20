@@ -30,21 +30,31 @@ pub struct TreeCursor<'a> {
     node_or_token: NodeOrToken<'a>,
 }
 
+// https://github.com/tree-sitter/tree-sitter/blob/90666c951d53c13cc6cf5002d971a6debed74244/lib/binding_rust/lib.rs#L74-L78
+#[derive(Debug, Clone)]
+pub struct Point {
+    pub row: usize,
+    pub column: usize,
+}
+
+impl std::fmt::Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.row, self.column)
+    }
+}
+
+// https://github.com/tree-sitter/tree-sitter/blob/90666c951d53c13cc6cf5002d971a6debed74244/lib/binding_rust/lib.rs#L80-L88
 #[derive(Debug, Clone)]
 pub struct Range {
-    pub start_row: usize,
-    pub start_col: usize,
-    pub end_row: usize,
-    pub end_col: usize,
+    start_byte: usize,
+    end_byte: usize,
+    start_position: Point,
+    end_position: Point,
 }
 
 impl std::fmt::Display for Range {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[({}, {})-({}, {})]",
-            self.start_row, self.start_col, self.end_row, self.end_col
-        )
+        write!(f, "[{}-{}]", self.start_position, self.end_position)
     }
 }
 
@@ -103,14 +113,26 @@ impl<'a> Node<'a> {
             .unwrap()
     }
 
+    pub fn start_position(&self) -> Point {
+        self.range().start_position
+    }
+
+    pub fn end_position(&self) -> Point {
+        self.range().end_position
+    }
+
     pub fn text(&self) -> &'a str {
-        // self.node_or_token
-        //     .as_token()
-        //     .map(|t| t.text())
-        //     .unwrap_or_default()
-        let start = self.node_or_token.text_range().start().into();
-        let end = self.node_or_token.text_range().end().into();
-        &self.input[start..end]
+        let Range {
+            start_byte,
+            end_byte,
+            ..
+        } = self.range();
+
+        &self.input[start_byte..end_byte]
+    }
+
+    pub fn utf8_text() {
+        unimplemented!()
     }
 
     pub fn child_count(&self) -> usize {
@@ -309,8 +331,8 @@ FROM
             print!("{}", cursor.node().kind());
 
             if cursor.node().child_count() == 0 {
-                // print!(" \"{}\"", cursor.node().utf8_text(src.as_bytes()).unwrap());
-                print!(" \"{}\"", cursor.node().text().escape_default());
+                // print!(" \"{}\"", cursor.node().utf8_text(src.as_bytes()).unwrap()); // tree-sitter style
+                print!(" \"{}\"", cursor.node().text().escape_default()); // postgresql-cst-parser style
             }
             println!(
                 // " [{}-{}]",
