@@ -167,15 +167,6 @@ impl<'a> TreeCursor<'a> {
         }
     }
 
-    pub fn goto_direct_prev_sibling(&mut self) -> bool {
-        if let Some(prev) = self.node_or_token.prev_sibling_or_token() {
-            self.node_or_token = prev;
-            true
-        } else {
-            false
-        }
-    }
-
     pub fn is_comment(&self) -> bool {
         matches!(
             self.node_or_token.kind(),
