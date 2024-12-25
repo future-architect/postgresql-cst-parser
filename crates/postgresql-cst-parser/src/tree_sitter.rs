@@ -187,65 +187,8 @@ mod tests {
     use crate::{
         parse,
         syntax_kind::SyntaxKind,
-        tree_sitter::{
-            as_tree_sitter_cursor, get_ts_tree_and_range_map, TreeCursor,
-        },
+        tree_sitter::{as_tree_sitter_cursor, get_ts_tree_and_range_map},
     };
-
-    #[test]
-    fn tree_sitter_like_traverse() {
-        const UNIT: usize = 2;
-
-        fn visit(cursor: &mut TreeCursor, depth: usize, src: &str) {
-            (0..(depth * UNIT)).for_each(|_| print!("-"));
-
-            print!("{}", cursor.node().kind());
-
-            if cursor.node().child_count() == 0 {
-                // print!(" \"{}\"", cursor.node().utf8_text(src.as_bytes()).unwrap()); // tree-sitter style
-                print!(" \"{}\"", cursor.node().text().escape_default()); // postgresql-cst-parser style
-            }
-            println!(
-                // " [{}-{}]",
-                // cursor.node().start_position(),
-                // cursor.node().end_position()
-                " {}",
-                cursor.node().range()
-            );
-
-            // 子供を走査
-            if cursor.goto_first_child() {
-                visit(cursor, depth + 1, src);
-                while cursor.goto_next_sibling() {
-                    visit(cursor, depth + 1, src);
-                }
-                cursor.goto_parent();
-            }
-        }
-
-        let src = r#"
--- comment
-SELECT
-	1 as X
-,	2 -- comment
-,	3
-FROM
-	A
-,	B
-;
-select
-    1
-,   2
-;
-
-"#;
-
-        let node = parse(&src).unwrap();
-        let (node, range_map) = get_ts_tree_and_range_map(&src, &node);
-        let mut cursor = as_tree_sitter_cursor(src, &node, range_map);
-
-        visit(&mut cursor, 0, &src);
-    }
 
     #[test]
     fn goto_first_child_from_node() {
