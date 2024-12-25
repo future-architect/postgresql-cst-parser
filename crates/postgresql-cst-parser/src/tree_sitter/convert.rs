@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
+use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode, traversal::WalkEvent};
 
 use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode};
 
@@ -100,38 +100,6 @@ fn get_row_column_range(node_or_token: &NodeOrToken, new_line_indices: &[usize])
     }
 }
 
-fn traverse_pre_order<F: FnMut(NodeOrToken)>(node: &ResolvedNode, mut f: F) {
-    let mut node_or_token = NodeOrToken::Node(node);
-
-    loop {
-        f(node_or_token);
-
-        if let Some(node) = node_or_token.as_node() {
-            if let Some(child) = node.first_child_or_token() {
-                node_or_token = child;
-                continue;
-            }
-        }
-
-        if let Some(sibling) = node_or_token.next_sibling_or_token() {
-            node_or_token = sibling;
-        } else {
-            loop {
-                if let Some(parent) = node_or_token.parent() {
-                    node_or_token = NodeOrToken::Node(parent);
-                } else {
-                    return;
-                }
-
-                if let Some(sibling) = node_or_token.next_sibling_or_token() {
-                    node_or_token = sibling;
-                    break;
-                }
-            }
-        }
-    }
-}
-
 fn create_mapping(
     root: &ResolvedNode,
     row_column_ranges: Vec<RowColumnRange>,
@@ -142,15 +110,17 @@ fn create_mapping(
     );
 
     let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
-    let mut range_iter = row_column_ranges.iter();
-    traverse_pre_order(root, |node_or_token| {
-        if let Some(original_range) = range_iter.next() {
-            let byte_range = node_or_token.text_range();
-            range_map.insert(byte_range, original_range.clone());
-        }
-    });
+    root.preorder_with_tokens()
+        .filter(|e| matches!(e, WalkEvent::Enter(_)))
+        .zip(row_column_ranges)
+        .for_each(|(e, original_range)| match e {
+            WalkEvent::Enter(node_or_token) => {
+                let byte_range = node_or_token.text_range();
+                range_map.insert(byte_range, original_range.clone());
+            }
+            _ => unreachable!(),
+        });
 
-    assert!(range_iter.next().is_none());
     range_map
 }
 
