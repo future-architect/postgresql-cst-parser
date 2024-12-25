@@ -182,6 +182,7 @@ fn walk_and_build(
                     | SyntaxKind::stmt
                     | SyntaxKind::select_no_parens
                     | SyntaxKind::simple_select
+                    | SyntaxKind::select_clause
                     | SyntaxKind::opt_target_list => {
                         // [Node: Removal]
                         //
