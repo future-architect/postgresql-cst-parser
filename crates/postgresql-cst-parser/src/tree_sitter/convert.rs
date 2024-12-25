@@ -1,40 +1,147 @@
-use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode};
+use std::collections::HashMap;
 
-use crate::{syntax_kind::SyntaxKind, PostgreSQLSyntax, ResolvedNode};
+use cstree::{build::GreenNodeBuilder, syntax::SyntaxNode, traversal::WalkEvent};
 
-/// Converts the given CST into a node structure and hierarchy that closely matches what `tree-sitter-sql` produces.
-pub fn convert_cst(root: &ResolvedNode) -> ResolvedNode {
+use crate::{syntax_kind::SyntaxKind, NodeOrToken, PostgreSQLSyntax, ResolvedNode};
+
+use super::Point;
+
+type SequentialRange = cstree::text::TextRange; // Range representation by cstree (Sequential bytes)
+type RowColumnRange = super::Range; // tree-sitter like range representation (Rows and Columns)
+
+pub fn get_ts_tree_and_range_map(
+    src: &str,
+    root: &ResolvedNode,
+) -> (ResolvedNode, HashMap<SequentialRange, RowColumnRange>) {
     let mut builder = GreenNodeBuilder::new();
+    let mut row_column_ranges: Vec<RowColumnRange> = vec![];
 
-    // Build `Root` node
-    builder.start_node(SyntaxKind::Root);
-    walk_and_build(&mut builder, root);
-    builder.finish_node();
+    // Build new tree, and Collect row-column style Ranges
+    {
+        let new_line_indices: Vec<_> = src
+            .char_indices()
+            .filter(|&(_, c)| c == '\n')
+            .map(|(i, _)| i)
+            .collect();
 
+        row_column_ranges.push(get_row_column_range(
+            &NodeOrToken::Node(root),
+            &new_line_indices,
+        ));
+
+        builder.start_node(SyntaxKind::Root);
+        // process subtrees
+        // These Nodes will be ignored:
+        //   - Unneeded node
+        //   - Nested node
+        //   - Whitespace token
+        //
+        // Each Node in the tree:
+        // 1. Add new Node (or Token) to New Tree
+        // 2. Create tree-sitter compatible `Range`s based on the original text.
+        walk_and_build(
+            root,
+            &new_line_indices,
+            &mut builder,
+            &mut row_column_ranges,
+        );
+        builder.finish_node();
+    }
+
+    // Get New tree
     let (tree, cache) = builder.finish();
+    let new_root =
+        SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap());
 
-    SyntaxNode::new_root_with_resolver(tree, cache.unwrap().into_interner().unwrap())
+    // Create a mapping between the TextRanges of nodes and tokens (in bytes) and the original text ranges (in rows and columns).
+    let range_map = create_mapping(&new_root, row_column_ranges);
+
+    (new_root, range_map)
 }
 
-/// Traverse the CST and rewrite certain nodes
-/// e.g. flatten list node, remove option node
+fn get_row_column_range(node_or_token: &NodeOrToken, new_line_indices: &[usize]) -> RowColumnRange {
+    let text_range: SequentialRange = node_or_token.text_range();
+
+    let before_start_new_line_count =
+        match new_line_indices.binary_search(&text_range.start().into()) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+
+    let before_end_new_line_count = match new_line_indices.binary_search(&text_range.end().into()) {
+        Ok(i) => i,
+        Err(i) => i,
+    };
+
+    let start_position = Point {
+        row: before_start_new_line_count,
+        column: usize::from(text_range.start())
+            - match before_start_new_line_count {
+                0 => 0,
+                i => new_line_indices[i - 1] + 1,
+            },
+    };
+
+    let end_position = Point {
+        row: before_end_new_line_count,
+        column: usize::from(text_range.end())
+            - 1
+            - match before_end_new_line_count {
+                0 => 0,
+                i => new_line_indices[i - 1],
+            },
+    };
+
+    RowColumnRange {
+        start_byte: text_range.start().into(),
+        end_byte: text_range.end().into(),
+        start_position,
+        end_position,
+    }
+}
+
+fn create_mapping(
+    root: &ResolvedNode,
+    row_column_ranges: Vec<RowColumnRange>,
+) -> HashMap<SequentialRange, RowColumnRange> {
+    assert_eq!(
+        root.descendants_with_tokens().count(),
+        row_column_ranges.len()
+    );
+
+    let mut range_map: HashMap<SequentialRange, RowColumnRange> = HashMap::new();
+    root.preorder_with_tokens()
+        .filter(|e| matches!(e, WalkEvent::Enter(_)))
+        .zip(row_column_ranges)
+        .for_each(|(e, original_range)| match e {
+            WalkEvent::Enter(node_or_token) => {
+                let byte_range = node_or_token.text_range();
+                range_map.insert(byte_range, original_range.clone());
+            }
+            _ => unreachable!(),
+        });
+
+    range_map
+}
+
 fn walk_and_build(
-    builder: &mut GreenNodeBuilder<'static, 'static, PostgreSQLSyntax>,
     node: &ResolvedNode,
+    new_line_indices: &Vec<usize>,
+    builder: &mut GreenNodeBuilder<'static, 'static, PostgreSQLSyntax>,
+    row_column_ranges: &mut Vec<RowColumnRange>,
 ) {
     use cstree::util::NodeOrToken;
+
     let parent_kind = node.kind();
     let children = node.children_with_tokens();
 
     for child in children {
         match child {
-            NodeOrToken::Node(n) => {
-                match n.kind() {
-                    child_kind @ (SyntaxKind::stmtmulti
-                    | SyntaxKind::target_list
-                    | SyntaxKind::from_list) => {
+            NodeOrToken::Node(child_node) => {
+                match child_node.kind() {
+                    child_kind @ (SyntaxKind::target_list | SyntaxKind::from_list) => {
                         if parent_kind == child_kind {
-                            // [Flatten]
+                            // [Node: Flatten]
                             //
                             // This patten does not construct node.
                             //
@@ -44,17 +151,40 @@ fn walk_and_build(
                             //     +- target_el
                             //     +- ...
                             //
-                            walk_and_build(builder, n);
+                            walk_and_build(
+                                child_node,
+                                new_line_indices,
+                                builder,
+                                row_column_ranges,
+                            );
                         } else {
                             // Node is target for flattening, but at the top level of the nest
-                            builder.start_node(n.kind());
-                            walk_and_build(builder, n);
+
+                            row_column_ranges.push(get_row_column_range(
+                                &NodeOrToken::Node(child_node),
+                                new_line_indices,
+                            ));
+
+                            builder.start_node(child_node.kind());
+                            walk_and_build(
+                                child_node,
+                                new_line_indices,
+                                builder,
+                                row_column_ranges,
+                            );
                             builder.finish_node();
                         }
                     }
 
-                    SyntaxKind::opt_target_list => {
-                        // [Removal]
+                    SyntaxKind::parse_toplevel
+                    | SyntaxKind::stmtmulti
+                    | SyntaxKind::toplevel_stmt
+                    | SyntaxKind::stmt
+                    | SyntaxKind::select_no_parens
+                    | SyntaxKind::simple_select
+                    | SyntaxKind::select_clause
+                    | SyntaxKind::opt_target_list => {
+                        // [Node: Removal]
                         //
                         // Ignore current node, and continue building its children.
                         //
@@ -64,19 +194,36 @@ fn walk_and_build(
                         //       +- child_1                                          +- child_2
                         //       +- child_1
                         //
-                        walk_and_build(builder, n);
+                        walk_and_build(child_node, new_line_indices, builder, row_column_ranges);
                     }
 
-                    // Default pattern
+                    // [Node: Default]
                     _ => {
-                        builder.start_node(n.kind());
-                        walk_and_build(builder, n);
+                        row_column_ranges.push(get_row_column_range(
+                            &NodeOrToken::Node(child_node),
+                            new_line_indices,
+                        ));
+                        builder.start_node(child_node.kind());
+                        walk_and_build(child_node, new_line_indices, builder, row_column_ranges);
                         builder.finish_node();
                     }
                 }
             }
-            NodeOrToken::Token(t) => {
-                builder.token(t.kind(), t.text());
+            NodeOrToken::Token(child_token) => {
+                // [Token: Removal]
+                // Note:
+                //   This process will break the lossless property of the CST.
+                //   `text()` for Nodes and `text_range()` for Nodes and Tokens will become incompatible with the original text.
+                if child_token.kind() == SyntaxKind::Whitespace {
+                    continue;
+                }
+
+                // [Token: Default]
+                row_column_ranges.push(get_row_column_range(
+                    &NodeOrToken::Token(child_token),
+                    new_line_indices,
+                ));
+                builder.token(child_token.kind(), child_token.text());
             }
         }
     }
@@ -84,12 +231,11 @@ fn walk_and_build(
 
 #[cfg(test)]
 mod tests {
-    use crate::{cst, tree_sitter::convert::convert_cst};
+    use crate::{cst, tree_sitter::convert::get_ts_tree_and_range_map};
 
     #[test]
-    ///  Assert that the CST is not broken by the conversion.
-    fn restored_texts_are_equal() {
-        let input = r#"
+    fn whitespace_is_removed() {
+        let original = r#"
 SELECT
 	1 as X
 ,	2
@@ -98,11 +244,12 @@ FROM
 	A
 ,	B"#;
 
-        let root = cst::parse(input).unwrap();
-        let new_root = convert_cst(&root);
+        let root = cst::parse(&original).unwrap();
+        let (new_root, _) = get_ts_tree_and_range_map(&original, &root);
 
-        //  format!("{ResolvedNode}") returns original input str.
-        assert_eq!(format!("{root}"), format!("{new_root}"));
+        let whitespace_removed: String = original.split_whitespace().collect();
+        // Lossless property of the CST is broken.
+        assert_eq!(new_root.text(), whitespace_removed.as_str());
     }
 
     mod removal {
@@ -111,7 +258,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_exists, assert_not_exists},
-                convert::convert_cst,
+                convert::get_ts_tree_and_range_map,
             },
         };
 
@@ -121,7 +268,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_exists(&root, SyntaxKind::opt_target_list);
 
-            let new_root = convert_cst(&root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_not_exists(&new_root, SyntaxKind::opt_target_list);
         }
     }
@@ -132,7 +279,7 @@ FROM
             syntax_kind::SyntaxKind,
             tree_sitter::{
                 assert_util::{assert_no_direct_nested_kind, assert_node_count},
-                convert::convert_cst,
+                convert::get_ts_tree_and_range_map,
             },
         };
 
@@ -143,7 +290,7 @@ FROM
             let root = cst::parse(input).unwrap();
             assert_node_count(&root, SyntaxKind::target_list, 3);
 
-            let new_root = convert_cst(&root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_node_count(&new_root, SyntaxKind::target_list, 1);
             assert_no_direct_nested_kind(&new_root, SyntaxKind::target_list);
         }
@@ -152,7 +299,7 @@ FROM
         fn no_nested_stmtmulti() {
             let input = "select a,b,c;\nselect d,e from t;";
             let root = cst::parse(input).unwrap();
-            let new_root = convert_cst(&root);
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::stmtmulti);
         }
@@ -161,7 +308,7 @@ FROM
         fn no_nested_from_list() {
             let input = "select * from t1, t2;";
             let root = cst::parse(input).unwrap();
-            let new_root = convert_cst(&root);
+            let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::from_list);
         }
