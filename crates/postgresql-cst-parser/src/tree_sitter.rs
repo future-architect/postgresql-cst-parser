@@ -68,7 +68,6 @@ impl<'a> Node<'a> {
     }
 
     pub fn range(&self) -> Range {
-        // dbg!(self.node_or_token.text_range(), &self.range_map);
         self.range_map
             .get(&self.node_or_token.text_range())
             .cloned()
@@ -91,10 +90,6 @@ impl<'a> Node<'a> {
         } = self.range();
 
         &self.input[start_byte..end_byte]
-    }
-
-    pub fn utf8_text() {
-        unimplemented!()
     }
 
     pub fn child_count(&self) -> usize {
@@ -187,61 +182,15 @@ pub fn as_tree_sitter_cursor<'a>(
     }
 }
 
-pub fn dump_as_tree_sitter_like(input: &str, node: &ResolvedNode) {
-    let (node, range_map) = get_ts_tree_and_range_map(input, node);
-    let mut cursor = as_tree_sitter_cursor(input, &node, range_map);
-
-    let mut depth = 0;
-    loop {
-        dbg!(cursor.node().kind(), cursor.node().text(), depth);
-
-        if cursor.goto_first_child() {
-            depth += 1;
-        } else if cursor.goto_next_sibling() {
-        } else {
-            loop {
-                if !cursor.goto_parent() {
-                    return;
-                }
-
-                depth -= 1;
-                if cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
-        cst, parse,
+        parse,
         syntax_kind::SyntaxKind,
         tree_sitter::{
-            as_tree_sitter_cursor, dump_as_tree_sitter_like, get_ts_tree_and_range_map, TreeCursor,
+            as_tree_sitter_cursor, get_ts_tree_and_range_map, TreeCursor,
         },
-        ParseError,
     };
-
-    #[test]
-    fn test() -> Result<(), ParseError> {
-        let input = r#"
-SELECT
-	1 as X
-,	2
-,	3
-FROM
-	A
-,	B"#;
-        // dbg!(input);
-        let node = cst::parse(input)?;
-        // dbg!(&node);
-
-        dump_as_tree_sitter_like(input, &node);
-
-        Ok(())
-    }
 
     #[test]
     fn tree_sitter_like_traverse() {
