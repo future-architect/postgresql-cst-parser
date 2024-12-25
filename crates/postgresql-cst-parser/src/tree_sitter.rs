@@ -59,8 +59,8 @@ impl std::fmt::Display for Range {
 }
 
 impl<'a> Node<'a> {
-    pub fn walk(&self) -> TreeCursor<'a> {
-        unimplemented!()
+    pub fn walk(&self, src: &'a str, range_map: HashMap<TextRange, Range>) -> TreeCursor<'a> {
+        as_tree_sitter_cursor(src, self.node_or_token.as_node().unwrap(), range_map)
     }
 
     pub fn kind(&self) -> SyntaxKind {
@@ -189,6 +189,19 @@ mod tests {
         syntax_kind::SyntaxKind,
         tree_sitter::{as_tree_sitter_cursor, get_ts_tree_and_range_map},
     };
+    
+    #[test]
+    fn walk() {
+        let src = "select a, b, c from tbl;";
+        let (root, range_map) = get_ts_tree_and_range_map(&src, &parse(&src).unwrap());
+
+        let mut cursor = as_tree_sitter_cursor(src, &root, range_map.clone());
+        cursor.goto_first_child();
+        let node = cursor.node();
+        
+        let new_cursor = node.walk(src, range_map);
+        assert_eq!(cursor.node().kind(), new_cursor.node().kind())
+    }
 
     #[test]
     fn goto_first_child_from_node() {
