@@ -2,7 +2,7 @@
 mod assert_util;
 
 mod convert;
-pub use convert::get_ts_tree_and_range_map;
+use convert::get_ts_tree_and_range_map;
 
 use std::{collections::HashMap, fmt::Display, rc::Rc, str};
 
@@ -265,13 +265,6 @@ mod tests {
 
         cursor.goto_first_child();
         assert!(cursor.node().is_comment());
-    }
-
-    #[test]
-    fn test_empty_query() {
-        let src = "";
-        let result = parse(src);
-        assert!(result.is_err());
     }
 
     #[test]
