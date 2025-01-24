@@ -16,29 +16,37 @@ impl Display for SyntaxKind {
     }
 }
 
-pub fn parse(input: &str)->Result<Tree, cst::ParseError> {
+pub fn parse(input: &str) -> Result<Tree, cst::ParseError> {
     let parsed = cst::parse(input)?;
-    let (root,range_map) = get_ts_tree_and_range_map(input, &parsed);
+    let (root, range_map) = get_ts_tree_and_range_map(input, &parsed);
     Ok(Tree::new(input, root, range_map))
 }
 
 pub struct Tree {
     src: String,
     root: ResolvedNode,
-    range_map: Rc<HashMap<TextRange, Range>>
+    range_map: Rc<HashMap<TextRange, Range>>,
 }
 
 impl Tree {
-    pub fn new<T: Into<String>>(src: T, root: ResolvedNode, range_map: HashMap<TextRange, Range>)->Self {
+    pub fn new<T: Into<String>>(
+        src: T,
+        root: ResolvedNode,
+        range_map: HashMap<TextRange, Range>,
+    ) -> Self {
         Self {
             src: src.into(),
             root,
-            range_map: Rc::new(range_map)
+            range_map: Rc::new(range_map),
         }
     }
 
-    pub fn root_node(&self)->Node {
-        Node { input: &self.src, range_map: Rc::clone(&self.range_map), node_or_token: NodeOrToken::Node(&self.root) }
+    pub fn root_node(&self) -> Node {
+        Node {
+            input: &self.src,
+            range_map: Rc::clone(&self.range_map),
+            node_or_token: NodeOrToken::Node(&self.root),
+        }
     }
 }
 
@@ -89,7 +97,7 @@ impl<'a> Node<'a> {
         TreeCursor {
             input: self.input,
             range_map: Rc::clone(&self.range_map),
-            node_or_token: self.node_or_token
+            node_or_token: self.node_or_token,
         }
     }
 
