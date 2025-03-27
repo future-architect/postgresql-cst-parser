@@ -146,6 +146,7 @@ fn walk_and_build(
                     | SyntaxKind::when_clause_list
                     | SyntaxKind::group_by_list
                     | SyntaxKind::sortby_list
+                    | SyntaxKind::qualified_name_list
                     | SyntaxKind::for_locking_items) => {
                         if parent_kind == child_kind {
                             // [Node: Flatten]
@@ -382,6 +383,15 @@ FROM
             let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::for_locking_items);
+        }
+
+        #[test]
+        fn no_nested_qualified_name_list() {
+            let input = "select a from t for update of t.a, t.b;";
+            let root = cst::parse(input).unwrap();
+            let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
+
+            assert_no_direct_nested_kind(&new_root, SyntaxKind::qualified_name_list);
         }
     }
 }
