@@ -192,7 +192,8 @@ fn walk_and_build(
                     | SyntaxKind::simple_select
                     | SyntaxKind::select_clause
                     | SyntaxKind::opt_select_limit
-                    | SyntaxKind::opt_target_list => {
+                    | SyntaxKind::opt_target_list
+                    | SyntaxKind::opt_sort_clause => {
                         // [Node: Removal]
                         //
                         // Ignore current node, and continue building its children.
@@ -289,6 +290,16 @@ FROM
 
             let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_not_exists(&new_root, SyntaxKind::opt_select_limit);
+        }
+
+        #[test]
+        fn no_opt_sort_clause() {
+            let input = "select a from t order by a desc limit 5;";
+            let root = cst::parse(input).unwrap();
+            assert_exists(&root, SyntaxKind::opt_sort_clause);
+
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
+            assert_not_exists(&new_root, SyntaxKind::opt_sort_clause);
         }
     }
 
