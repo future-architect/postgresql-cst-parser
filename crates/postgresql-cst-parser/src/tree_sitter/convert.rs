@@ -192,6 +192,7 @@ fn walk_and_build(
                     | SyntaxKind::simple_select
                     | SyntaxKind::select_clause
                     | SyntaxKind::opt_select_limit
+                    | SyntaxKind::select_limit
                     | SyntaxKind::opt_target_list => {
                         // [Node: Removal]
                         //
@@ -289,6 +290,16 @@ FROM
 
             let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_not_exists(&new_root, SyntaxKind::opt_select_limit);
+        }
+
+        #[test]
+        fn no_select_limit() {
+            let input = "select a from t limit 5 offset 5;";
+            let root = cst::parse(input).unwrap();
+            assert_exists(&root, SyntaxKind::select_limit);
+
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
+            assert_not_exists(&new_root, SyntaxKind::select_limit);
         }
     }
 
