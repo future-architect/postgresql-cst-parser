@@ -24,6 +24,7 @@ pub use cst::SyntaxToken;
 
 use transform::ComplementMissingFromTableTransformer;
 use transform::ComplementMissingSampleValueTransformer;
+use transform::ParseTransformer;
 use transform::SkipExtraComma;
 use transform::SkipExtraOperator;
 pub use tree_sitter::parse as ts_parse;
@@ -47,4 +48,11 @@ pub fn parse_2way(input: &str) -> Result<ResolvedNode, ParseError> {
             &SkipExtraOperator,
         ],
     )
+}
+
+pub fn parse_2way_with_transformers(
+    input: &str,
+    transformers: &[&dyn ParseTransformer],
+) -> Result<ResolvedNode, ParseError> {
+    parse_with_transformer(input, transformers)
 }

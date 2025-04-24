@@ -5,7 +5,7 @@ use crate::{lexer::TokenKind, syntax_kind::SyntaxKind};
 use super::{num_terminal_symbol, LRParseState, ParseTransform, ParseTransformer};
 
 /// Complete missing replacement string sample values ​​(FROM clause only)
-pub(crate) struct ComplementMissingFromTableTransformer;
+pub struct ComplementMissingFromTableTransformer;
 
 fn is_replacement_string_comment(comment: &str) -> bool {
     comment.starts_with("/*#") && comment.ends_with("*/")

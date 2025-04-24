@@ -3,7 +3,7 @@ use crate::{cst::Extra, lexer::TokenKind, syntax_kind::SyntaxKind};
 use super::{num_terminal_symbol, LRParseState, ParseTransform, ParseTransformer};
 
 /// Complete missing bind variable sample values
-pub(crate) struct ComplementMissingSampleValueTransformer;
+pub struct ComplementMissingSampleValueTransformer;
 
 impl ComplementMissingSampleValueTransformer {
     fn is_bind_variable_comment(s: impl AsRef<str>) -> bool {

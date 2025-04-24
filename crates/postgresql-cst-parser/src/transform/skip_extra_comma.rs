@@ -3,7 +3,7 @@ use crate::{lexer::TokenKind, syntax_kind::SyntaxKind};
 use super::{LRParseState, ParseTransform, ParseTransformer};
 
 /// Skip extra commas at the beginning of SELECT, FROM, and ORDER BY clauses
-pub(crate) struct SkipExtraComma;
+pub struct SkipExtraComma;
 
 impl SkipExtraComma {
     fn allow_extra_comma<'a>(lr_parse_state: &LRParseState<'a>) -> bool {

@@ -3,7 +3,7 @@ use crate::{lexer::TokenKind, syntax_kind::SyntaxKind};
 use super::{LRParseState, ParseTransform, ParseTransformer};
 
 /// Skip extra AND/OR at the beginning of the WHERE clause
-pub(crate) struct SkipExtraOperator;
+pub struct SkipExtraOperator;
 
 impl SkipExtraOperator {
     fn allow_extra_operator<'a>(lr_parse_state: &LRParseState<'a>) -> bool {
