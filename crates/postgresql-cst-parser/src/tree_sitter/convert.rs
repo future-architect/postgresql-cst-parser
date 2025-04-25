@@ -150,7 +150,8 @@ fn walk_and_build(
                     | SyntaxKind::for_locking_items
                     | SyntaxKind::cte_list
                     | SyntaxKind::name_list
-                    | SyntaxKind::set_clause_list) => {
+                    | SyntaxKind::set_clause_list
+                    | SyntaxKind::set_target_list) => {
                         if parent_kind == child_kind {
                             // [Node: Flatten]
                             //
@@ -455,6 +456,15 @@ FROM
             let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
 
             assert_no_direct_nested_kind(&new_root, SyntaxKind::set_clause_list);
+        }
+
+        #[test]
+        fn no_nested_set_target_list() {
+            let input = "update t set (a, b, c) = (1, 2, 3) where id = 1;";
+            let root = cst::parse(input).unwrap();
+            let (new_root, _) = get_ts_tree_and_range_map(&input, &root);
+
+            assert_no_direct_nested_kind(&new_root, SyntaxKind::set_target_list);
         }
     }
 }
