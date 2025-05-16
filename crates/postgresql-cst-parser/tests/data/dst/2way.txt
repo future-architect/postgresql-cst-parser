@@ -34,12 +34,6 @@ Root@0..269
                                   AexprConst@66..66
                                     Sconst@66..66
                                       SCONST@66..66 ""
-                        into_clause@66..66
-                        from_clause@66..66
-                        where_clause@66..66
-                        group_clause@66..66
-                        having_clause@66..66
-                        window_clause@66..66
             Whitespace@66..67 "\n"
             Semicolon@67..68 ";"
             Whitespace@68..70 "\n\n"
@@ -68,7 +62,6 @@ Root@0..269
                                 qualified_name@137..137
                                   ColId@137..137
                                     IDENT@137..137 ""
-                              opt_alias_clause@137..137
                           Whitespace@137..138 "\n"
                           Comma@138..139 ","
                           Whitespace@139..140 "\t"
@@ -78,11 +71,6 @@ Root@0..269
                               qualified_name@149..149
                                 ColId@149..149
                                   IDENT@149..149 ""
-                            opt_alias_clause@149..149
-                      where_clause@149..149
-                      group_clause@149..149
-                      having_clause@149..149
-                      window_clause@149..149
           Whitespace@149..150 "\n"
           Semicolon@150..151 ";"
           Whitespace@151..153 "\n\n"
