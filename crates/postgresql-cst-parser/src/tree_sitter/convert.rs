@@ -200,7 +200,8 @@ fn walk_and_build(
                     | SyntaxKind::opt_select_limit
                     | SyntaxKind::opt_target_list
                     | SyntaxKind::opt_sort_clause
-                    | SyntaxKind::select_limit => {
+                    | SyntaxKind::select_limit
+                    | SyntaxKind::func_arg_list_opt => {
                         // [Node: Removal]
                         //
                         // Ignore current node, and continue building its children.
@@ -317,6 +318,16 @@ FROM
 
             let (new_root, _) = get_ts_tree_and_range_map(input, &root);
             assert_not_exists(&new_root, SyntaxKind::select_limit);
+        }
+
+        #[test]
+        fn no_func_arg_list_opt() {
+            let input = "select substring('hello', 2, 3);";
+            let root = cst::parse(input).unwrap();
+            assert_exists(&root, SyntaxKind::func_arg_list_opt);
+
+            let (new_root, _) = get_ts_tree_and_range_map(input, &root);
+            assert_not_exists(&new_root, SyntaxKind::func_arg_list_opt);
         }
     }
 
