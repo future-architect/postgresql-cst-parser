@@ -98,6 +98,24 @@ impl std::fmt::Display for Range {
     }
 }
 
+impl Range {
+    pub fn extended_by(&self, other: &Self) -> Self {
+        Range {
+            start_byte: self.start_byte.min(other.start_byte),
+            end_byte: self.end_byte.max(other.end_byte),
+
+            start_position: Point {
+                row: self.start_position.row.min(other.start_position.row),
+                column: self.start_position.column.min(other.start_position.column),
+            },
+            end_position: Point {
+                row: self.end_position.row.max(other.end_position.row),
+                column: self.end_position.column.max(other.end_position.column),
+            },
+        }
+    }
+}
+
 impl<'a> Node<'a> {
     pub fn walk(&self) -> TreeCursor<'a> {
         TreeCursor {
@@ -141,6 +159,20 @@ impl<'a> Node<'a> {
             node.children_with_tokens().count()
         } else {
             0
+        }
+    }
+
+    pub fn children(&self) -> Vec<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.children_with_tokens()
+                .map(|node| Node {
+                    input: self.input,
+                    range_map: Rc::clone(&self.range_map),
+                    node_or_token: node,
+                })
+                .collect()
+        } else {
+            vec![]
         }
     }
 
