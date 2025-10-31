@@ -186,6 +186,16 @@ impl<'a> Node<'a> {
             })
     }
 
+    pub fn prev_sibling(&self) -> Option<Node<'a>> {
+        self.node_or_token
+            .prev_sibling_or_token()
+            .map(|sibling| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: sibling,
+            })
+    }
+
     pub fn parent(&self) -> Option<Node<'a>> {
         self.node_or_token.parent().map(|parent| Node {
             input: self.input,
@@ -239,6 +249,15 @@ impl<'a> TreeCursor<'a> {
 
     pub fn goto_next_sibling(&mut self) -> bool {
         if let Some(sibling) = self.node_or_token.next_sibling_or_token() {
+            self.node_or_token = sibling;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn goto_prev_sibling(&mut self) -> bool {
+        if let Some(sibling) = self.node_or_token.prev_sibling_or_token() {
             self.node_or_token = sibling;
             true
         } else {
