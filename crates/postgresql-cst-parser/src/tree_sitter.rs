@@ -207,6 +207,59 @@ impl<'a> Node<'a> {
     pub fn is_comment(&self) -> bool {
         matches!(self.kind(), SyntaxKind::C_COMMENT | SyntaxKind::SQL_COMMENT)
     }
+
+    /// Return the rightmost token in the subtree of this node
+    /// this is not tree-sitter's API
+    pub fn last_token(&self) -> Option<Node<'a>> {
+        match &self.node_or_token {
+            NodeOrToken::Node(node) => node.last_token().map(|token| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(token),
+            }),
+            NodeOrToken::Token(token) => Some(Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(token),
+            }),
+        }
+    }
+
+    /// Returns an iterator over all descendant nodes (not including tokens)
+    /// this is not tree-sitter's API
+    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> {
+        struct Descendants<'a> {
+            input: &'a str,
+            range_map: Rc<HashMap<TextRange, Range>>,
+            iter: Box<dyn Iterator<Item = &'a ResolvedNode> + 'a>,
+        }
+
+        impl<'a> Iterator for Descendants<'a> {
+            type Item = Node<'a>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.iter.next().map(|node| Node {
+                    input: self.input,
+                    range_map: Rc::clone(&self.range_map),
+                    node_or_token: NodeOrToken::Node(node),
+                })
+            }
+        }
+
+        if let Some(node) = self.node_or_token.as_node() {
+            Descendants {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                iter: Box::new(node.descendants()),
+            }
+        } else {
+            Descendants {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                iter: Box::new(std::iter::empty()),
+            }
+        }
+    }
 }
 
 impl<'a> From<Node<'a>> for TreeCursor<'a> {
@@ -512,5 +565,37 @@ from
         }
 
         assert_eq!(stmt_count, 2);
+    }
+
+    #[test]
+    fn test_last_token_returns_rightmost_token() {
+        let src = "SELECT u.*, (v).id, name;";
+        let tree = parse(src).unwrap();
+        let root = tree.root_node();
+
+        let target_list = root
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::target_list)
+            .expect("should find target_list");
+
+        // last token of the target_list is returned
+        let last_token = target_list.last_token().expect("should have last token");
+        assert_eq!(last_token.text(), "name");
+
+        let target_els = target_list
+            .children()
+            .into_iter()
+            .filter(|node| node.kind() == SyntaxKind::target_el)
+            .collect::<Vec<_>>();
+
+        let mut last_tokens = target_els
+            .iter()
+            .map(|node| node.last_token().expect("should have last token"));
+
+        // last token of each target_el is returned
+        assert_eq!(last_tokens.next().unwrap().text(), "*");
+        assert_eq!(last_tokens.next().unwrap().text(), "id");
+        assert_eq!(last_tokens.next().unwrap().text(), "name");
+        assert!(last_tokens.next().is_none());
     }
 }
