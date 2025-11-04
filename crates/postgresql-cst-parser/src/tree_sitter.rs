@@ -210,7 +210,7 @@ impl<'a> Node<'a> {
 
     /// Return the rightmost token in the subtree of this node
     /// this is not tree-sitter's API
-    pub fn last_token(&self) -> Option<Node<'a>> {
+    pub fn last_node(&self) -> Option<Node<'a>> {
         match &self.node_or_token {
             NodeOrToken::Node(node) => node.last_token().map(|token| Node {
                 input: self.input,
@@ -568,7 +568,7 @@ from
     }
 
     #[test]
-    fn test_last_token_returns_rightmost_token() {
+    fn test_last_node_returns_rightmost_node() {
         let src = "SELECT u.*, (v).id, name;";
         let tree = parse(src).unwrap();
         let root = tree.root_node();
@@ -578,9 +578,9 @@ from
             .find(|node| node.kind() == SyntaxKind::target_list)
             .expect("should find target_list");
 
-        // last token of the target_list is returned
-        let last_token = target_list.last_token().expect("should have last token");
-        assert_eq!(last_token.text(), "name");
+        // last node of the target_list is returned
+        let last_node = target_list.last_node().expect("should have last node");
+        assert_eq!(last_node.text(), "name");
 
         let target_els = target_list
             .children()
@@ -588,14 +588,14 @@ from
             .filter(|node| node.kind() == SyntaxKind::target_el)
             .collect::<Vec<_>>();
 
-        let mut last_tokens = target_els
+        let mut last_nodes = target_els
             .iter()
-            .map(|node| node.last_token().expect("should have last token"));
+            .map(|node| node.last_node().expect("should have last node"));
 
-        // last token of each target_el is returned
-        assert_eq!(last_tokens.next().unwrap().text(), "*");
-        assert_eq!(last_tokens.next().unwrap().text(), "id");
-        assert_eq!(last_tokens.next().unwrap().text(), "name");
-        assert!(last_tokens.next().is_none());
+        // last node of each target_el is returned
+        assert_eq!(last_nodes.next().unwrap().text(), "*");
+        assert_eq!(last_nodes.next().unwrap().text(), "id");
+        assert_eq!(last_nodes.next().unwrap().text(), "name");
+        assert!(last_nodes.next().is_none());
     }
 }
