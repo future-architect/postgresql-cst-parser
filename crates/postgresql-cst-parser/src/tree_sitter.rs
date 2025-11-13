@@ -114,6 +114,10 @@ impl Range {
             },
         }
     }
+
+    pub fn is_adjacent(&self, other: &Self) -> bool {
+        self.end_byte == other.start_byte || self.start_byte == other.end_byte
+    }
 }
 
 impl<'a> Node<'a> {
