@@ -225,37 +225,60 @@ impl<'a> Node<'a> {
         }
     }
 
-    /// Returns an iterator over all descendant nodes (not including tokens)
+    /// Returns the next token in the tree.
+    /// This is not necessarily a direct sibling of this node/token,
+    /// but will always be further right in the tree.
     /// this is not tree-sitter's API
-    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> {
+    pub fn next_token(&self) -> Option<Node<'a>> {
+        match &self.node_or_token {
+            NodeOrToken::Token(token) => token.next_token().map(|next_token| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(next_token),
+            }),
+            NodeOrToken::Node(node) => {
+                // For a node, find its last token and then get the next token
+                node.last_token()
+                    .and_then(|last_token| last_token.next_token())
+                    .map(|next_token| Node {
+                        input: self.input,
+                        range_map: Rc::clone(&self.range_map),
+                        node_or_token: NodeOrToken::Token(next_token),
+                    })
+            }
+        }
+    }
+
+    /// Returns an iterator over all descendant nodes (including tokens)
+    /// this is not tree-sitter's API
+    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + '_ {
         struct Descendants<'a> {
-            input: &'a str,
-            range_map: Rc<HashMap<TextRange, Range>>,
-            iter: Box<dyn Iterator<Item = &'a ResolvedNode> + 'a>,
+            iter: Box<dyn Iterator<Item = Node<'a>> + 'a>,
         }
 
         impl<'a> Iterator for Descendants<'a> {
             type Item = Node<'a>;
 
             fn next(&mut self) -> Option<Self::Item> {
-                self.iter.next().map(|node| Node {
-                    input: self.input,
-                    range_map: Rc::clone(&self.range_map),
-                    node_or_token: NodeOrToken::Node(node),
-                })
+                self.iter.next()
             }
         }
 
         if let Some(node) = self.node_or_token.as_node() {
+            let input = self.input;
+            let range_map = Rc::clone(&self.range_map);
             Descendants {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                iter: Box::new(node.descendants()),
+                iter: Box::new(
+                    node.descendants_with_tokens()
+                        .map(move |node_or_token| Node {
+                            input,
+                            range_map: Rc::clone(&range_map),
+                            node_or_token,
+                        }),
+                ),
             }
         } else {
             Descendants {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
                 iter: Box::new(std::iter::empty()),
             }
         }
@@ -597,5 +620,22 @@ from
         assert_eq!(last_nodes.next().unwrap().text(), "id");
         assert_eq!(last_nodes.next().unwrap().text(), "name");
         assert!(last_nodes.next().is_none());
+    }
+
+    #[test]
+    fn test_next_token() {
+        let src = "SELECT tbl.name as n from TBL;";
+        let tree = parse(src).unwrap();
+        let root = tree.root_node();
+
+        let name = root
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::NAME_P)
+            .expect("should find NAME_P");
+
+        // Even if not a direct sibling or not belonging to the same subtree, the next_token can retrieve the next token.
+        let next_token = name.next_token().expect("should have next token");
+        assert_eq!(next_token.text(), "as");
+        assert_eq!(next_token.kind(), SyntaxKind::AS);
     }
 }
