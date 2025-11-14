@@ -180,6 +180,34 @@ impl<'a> Node<'a> {
         }
     }
 
+    /// Returns the first child element of this node.
+    /// this is not tree-sitter's API
+    pub fn first_child(&self) -> Option<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.first_child_or_token().map(|child| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: child,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns the last child element of this node.
+    /// this is not tree-sitter's API
+    pub fn last_child(&self) -> Option<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.last_child_or_token().map(|child| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: child,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn next_sibling(&self) -> Option<Node<'a>> {
         self.node_or_token
             .next_sibling_or_token()
@@ -212,7 +240,7 @@ impl<'a> Node<'a> {
         matches!(self.kind(), SyntaxKind::C_COMMENT | SyntaxKind::SQL_COMMENT)
     }
 
-    /// Return the rightmost token in the subtree of this node
+    /// Returns the rightmost token in the subtree of this node.
     /// this is not tree-sitter's API
     pub fn last_node(&self) -> Option<Node<'a>> {
         match &self.node_or_token {
