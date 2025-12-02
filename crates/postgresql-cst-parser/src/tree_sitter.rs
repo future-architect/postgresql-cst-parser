@@ -63,6 +63,14 @@ pub struct Node<'a> {
     pub node_or_token: NodeOrToken<'a>,
 }
 
+impl<'a> PartialEq for Node<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node_or_token == other.node_or_token
+    }
+}
+
+impl<'a> Eq for Node<'a> {}
+
 #[derive(Debug, Clone)]
 pub struct TreeCursor<'a> {
     pub input: &'a str,
