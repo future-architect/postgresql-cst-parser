@@ -47,7 +47,7 @@ impl Tree {
         }
     }
 
-    pub fn root_node(&self) -> Node {
+    pub fn root_node(&self) -> Node<'_> {
         Node {
             input: &self.src,
             range_map: Rc::clone(&self.range_map),
@@ -62,6 +62,14 @@ pub struct Node<'a> {
     range_map: Rc<HashMap<TextRange, Range>>,
     pub node_or_token: NodeOrToken<'a>,
 }
+
+impl<'a> PartialEq for Node<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node_or_token == other.node_or_token
+    }
+}
+
+impl<'a> Eq for Node<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct TreeCursor<'a> {
