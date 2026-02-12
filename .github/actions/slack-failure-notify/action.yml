@@ -100,6 +100,5 @@ runs:
         else
           echo "::error::Failed to send notification. HTTP Code: $HTTP_CODE"
           cat /tmp/slack_response.txt
-          # 警告にとどめ、CI自体は落とさない
-          exit 0
+          exit 1
         fi
