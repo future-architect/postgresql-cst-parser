@@ -289,7 +289,8 @@ impl<'a> Node<'a> {
         }
     }
 
-    /// Returns an iterator over all descendant nodes (including tokens)
+    /// Returns an iterator over all nodes in the subtree starting at this node,
+    /// including this node and tokens.
     /// this is not tree-sitter's API
     pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + '_ {
         struct Descendants<'a> {
@@ -319,7 +320,11 @@ impl<'a> Node<'a> {
             }
         } else {
             Descendants {
-                iter: Box::new(std::iter::empty()),
+                iter: Box::new(std::iter::once(Node {
+                    input: self.input,
+                    range_map: Rc::clone(&self.range_map),
+                    node_or_token: self.node_or_token,
+                })),
             }
         }
     }
