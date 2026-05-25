@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::{
+    generated::{get_keyword_map, State},
     Lexer, ScanReport, Yylval,
-    generated::{State, get_keyword_map},
 };
 
 impl Lexer {
