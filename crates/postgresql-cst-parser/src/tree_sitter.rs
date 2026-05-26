@@ -293,40 +293,22 @@ impl<'a> Node<'a> {
     /// including this node and tokens.
     /// this is not tree-sitter's API
     pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + '_ {
-        struct Descendants<'a> {
-            iter: Box<dyn Iterator<Item = Node<'a>> + 'a>,
-        }
+        let input = self.input;
+        let range_map = Rc::clone(&self.range_map);
 
-        impl<'a> Iterator for Descendants<'a> {
-            type Item = Node<'a>;
+        let iter: Box<dyn Iterator<Item = Node<'a>> + '_> = match self.node_or_token.as_node() {
+            Some(node) => Box::new(
+                node.descendants_with_tokens()
+                    .map(move |node_or_token| Node {
+                        input,
+                        range_map: Rc::clone(&range_map),
+                        node_or_token,
+                    }),
+            ),
+            None => Box::new(std::iter::once(self.clone())),
+        };
 
-            fn next(&mut self) -> Option<Self::Item> {
-                self.iter.next()
-            }
-        }
-
-        if let Some(node) = self.node_or_token.as_node() {
-            let input = self.input;
-            let range_map = Rc::clone(&self.range_map);
-            Descendants {
-                iter: Box::new(
-                    node.descendants_with_tokens()
-                        .map(move |node_or_token| Node {
-                            input,
-                            range_map: Rc::clone(&range_map),
-                            node_or_token,
-                        }),
-                ),
-            }
-        } else {
-            Descendants {
-                iter: Box::new(std::iter::once(Node {
-                    input: self.input,
-                    range_map: Rc::clone(&self.range_map),
-                    node_or_token: self.node_or_token,
-                })),
-            }
-        }
+        iter
     }
 }
 
