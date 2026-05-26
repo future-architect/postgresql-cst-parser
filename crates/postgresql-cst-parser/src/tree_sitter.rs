@@ -63,6 +63,14 @@ pub struct Node<'a> {
     pub node_or_token: NodeOrToken<'a>,
 }
 
+impl<'a> PartialEq for Node<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node_or_token == other.node_or_token
+    }
+}
+
+impl<'a> Eq for Node<'a> {}
+
 #[derive(Debug, Clone)]
 pub struct TreeCursor<'a> {
     pub input: &'a str,
@@ -95,6 +103,32 @@ pub struct Range {
 impl std::fmt::Display for Range {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}-{}]", self.start_position, self.end_position)
+    }
+}
+
+impl Range {
+    pub fn extended_by(&self, other: &Self) -> Self {
+        let (start_byte, start_position) = if self.start_byte <= other.start_byte {
+            (self.start_byte, self.start_position.clone())
+        } else {
+            (other.start_byte, other.start_position.clone())
+        };
+        let (end_byte, end_position) = if self.end_byte >= other.end_byte {
+            (self.end_byte, self.end_position.clone())
+        } else {
+            (other.end_byte, other.end_position.clone())
+        };
+
+        Range {
+            start_byte,
+            end_byte,
+            start_position,
+            end_position,
+        }
+    }
+
+    pub fn is_adjacent(&self, other: &Self) -> bool {
+        self.end_byte == other.start_byte || self.start_byte == other.end_byte
     }
 }
 
@@ -144,9 +178,61 @@ impl<'a> Node<'a> {
         }
     }
 
+    pub fn children(&self) -> Vec<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.children_with_tokens()
+                .map(|node| Node {
+                    input: self.input,
+                    range_map: Rc::clone(&self.range_map),
+                    node_or_token: node,
+                })
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+
+    /// Returns the first child element of this node.
+    /// this is not tree-sitter's API
+    pub fn first_child(&self) -> Option<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.first_child_or_token().map(|child| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: child,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns the last child element of this node.
+    /// this is not tree-sitter's API
+    pub fn last_child(&self) -> Option<Node<'a>> {
+        if let Some(node) = self.node_or_token.as_node() {
+            node.last_child_or_token().map(|child| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: child,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn next_sibling(&self) -> Option<Node<'a>> {
         self.node_or_token
             .next_sibling_or_token()
+            .map(|sibling| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: sibling,
+            })
+    }
+
+    pub fn prev_sibling(&self) -> Option<Node<'a>> {
+        self.node_or_token
+            .prev_sibling_or_token()
             .map(|sibling| Node {
                 input: self.input,
                 range_map: Rc::clone(&self.range_map),
@@ -164,6 +250,69 @@ impl<'a> Node<'a> {
 
     pub fn is_comment(&self) -> bool {
         matches!(self.kind(), SyntaxKind::C_COMMENT | SyntaxKind::SQL_COMMENT)
+    }
+
+    /// Returns the rightmost token in the subtree of this node.
+    /// this is not tree-sitter's API
+    pub fn last_token(&self) -> Option<Node<'a>> {
+        match &self.node_or_token {
+            NodeOrToken::Node(node) => node.last_token().map(|token| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(token),
+            }),
+            NodeOrToken::Token(token) => Some(Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(token),
+            }),
+        }
+    }
+
+    /// Returns the next token in the tree.
+    /// This is not necessarily a direct sibling of this node/token,
+    /// but will always be further right in the tree.
+    /// this is not tree-sitter's API
+    pub fn next_token(&self) -> Option<Node<'a>> {
+        match &self.node_or_token {
+            NodeOrToken::Token(token) => token.next_token().map(|next_token| Node {
+                input: self.input,
+                range_map: Rc::clone(&self.range_map),
+                node_or_token: NodeOrToken::Token(next_token),
+            }),
+            NodeOrToken::Node(node) => {
+                // For a node, find its last token and then get the next token
+                node.last_token()
+                    .and_then(|last_token| last_token.next_token())
+                    .map(|next_token| Node {
+                        input: self.input,
+                        range_map: Rc::clone(&self.range_map),
+                        node_or_token: NodeOrToken::Token(next_token),
+                    })
+            }
+        }
+    }
+
+    /// Returns an iterator over all nodes in the subtree starting at this node,
+    /// including this node and tokens.
+    /// this is not tree-sitter's API
+    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + '_ {
+        let input = self.input;
+        let range_map = Rc::clone(&self.range_map);
+
+        let iter: Box<dyn Iterator<Item = Node<'a>> + '_> = match self.node_or_token.as_node() {
+            Some(node) => Box::new(
+                node.descendants_with_tokens()
+                    .map(move |node_or_token| Node {
+                        input,
+                        range_map: Rc::clone(&range_map),
+                        node_or_token,
+                    }),
+            ),
+            None => Box::new(std::iter::once(self.clone())),
+        };
+
+        iter
     }
 }
 
@@ -207,6 +356,15 @@ impl<'a> TreeCursor<'a> {
 
     pub fn goto_next_sibling(&mut self) -> bool {
         if let Some(sibling) = self.node_or_token.next_sibling_or_token() {
+            self.node_or_token = sibling;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn goto_prev_sibling(&mut self) -> bool {
+        if let Some(sibling) = self.node_or_token.prev_sibling_or_token() {
             self.node_or_token = sibling;
             true
         } else {
@@ -394,6 +552,64 @@ from
     }
 
     #[test]
+    fn range_extended_by_keeps_original_positions_across_lines() {
+        let tree = parse("SELECT a,\n  b").unwrap();
+        let root = tree.root_node();
+        let mut tokens = root
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::IDENT)
+            .map(|node| (node.text(), node.range()));
+
+        let (_, a_range) = tokens.next().expect("should find a token");
+        let (_, b_range) = tokens.next().expect("should find b token");
+        let extended = a_range.extended_by(&b_range);
+        let expected = super::Range {
+            start_byte: a_range.start_byte,
+            end_byte: b_range.end_byte,
+            start_position: a_range.start_position.clone(),
+            end_position: b_range.end_position.clone(),
+        };
+
+        assert_eq!(extended.start_byte, expected.start_byte);
+        assert_eq!(extended.end_byte, expected.end_byte);
+        assert_eq!(
+            extended.start_position.to_string(),
+            expected.start_position.to_string()
+        );
+        assert_eq!(
+            extended.end_position.to_string(),
+            expected.end_position.to_string()
+        );
+    }
+
+    #[test]
+    fn range_extended_by_is_order_independent() {
+        let tree = parse("SELECT a,\n  b").unwrap();
+        let root = tree.root_node();
+        let mut tokens = root
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::IDENT)
+            .map(|node| node.range());
+
+        let a_range = tokens.next().expect("should find a token");
+        let b_range = tokens.next().expect("should find b token");
+
+        let forward = a_range.extended_by(&b_range);
+        let backward = b_range.extended_by(&a_range);
+
+        assert_eq!(forward.start_byte, backward.start_byte);
+        assert_eq!(forward.end_byte, backward.end_byte);
+        assert_eq!(
+            forward.start_position.to_string(),
+            backward.start_position.to_string()
+        );
+        assert_eq!(
+            forward.end_position.to_string(),
+            backward.end_position.to_string()
+        );
+    }
+
+    #[test]
     fn test_tree_basics() {
         let src = "SELECT id FROM users;";
         let tree = parse(src).unwrap();
@@ -461,5 +677,54 @@ from
         }
 
         assert_eq!(stmt_count, 2);
+    }
+
+    #[test]
+    fn test_last_token_returns_rightmost_token() {
+        let src = "SELECT u.*, (v).id, name;";
+        let tree = parse(src).unwrap();
+        let root = tree.root_node();
+
+        let target_list = root
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::target_list)
+            .expect("should find target_list");
+
+        // last token of the target_list is returned
+        let last_token = target_list.last_token().expect("should have last token");
+        assert_eq!(last_token.text(), "name");
+
+        let target_els = target_list
+            .children()
+            .into_iter()
+            .filter(|node| node.kind() == SyntaxKind::target_el)
+            .collect::<Vec<_>>();
+
+        let mut last_tokens = target_els
+            .iter()
+            .map(|node| node.last_token().expect("should have last token"));
+
+        // last token of each target_el is returned
+        assert_eq!(last_tokens.next().unwrap().text(), "*");
+        assert_eq!(last_tokens.next().unwrap().text(), "id");
+        assert_eq!(last_tokens.next().unwrap().text(), "name");
+        assert!(last_tokens.next().is_none());
+    }
+
+    #[test]
+    fn test_next_token() {
+        let src = "SELECT tbl.name as n from TBL;";
+        let tree = parse(src).unwrap();
+        let root = tree.root_node();
+
+        let name = root
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::NAME_P)
+            .expect("should find NAME_P");
+
+        // Even if not a direct sibling or not belonging to the same subtree, the next_token can retrieve the next token.
+        let next_token = name.next_token().expect("should have next token");
+        assert_eq!(next_token.text(), "as");
+        assert_eq!(next_token.kind(), SyntaxKind::AS);
     }
 }

@@ -5,11 +5,11 @@
 use std::collections::HashMap;
 
 use super::{
+    Lexer, NAMEDATALEN, ParserError, TokenKind, Yylval,
     lexer_ported::{
         get_char_by_byte_pos, is_highbit_set, is_utf16_surrogate_first, is_utf16_surrogate_second,
         surrogate_pair_to_codepoint,
     },
-    Lexer, ParserError, TokenKind, Yylval, NAMEDATALEN,
 };
 
 macro_rules! ereport {
@@ -4027,11 +4027,18 @@ impl Lexer {
 
                         self.set_yylloc();
                         if !STANDARD_CONFORMING_STRINGS {
-                            ereport!(self, ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("unsafe use of string constant with Unicode escapes"),
-								 errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."),
-								 self.lexer_errposition()));
+                            ereport!(
+                                self,
+                                ERROR,
+                                (
+                                    errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                    errmsg("unsafe use of string constant with Unicode escapes"),
+                                    errdetail(
+                                        "String constants with Unicode escapes cannot be used when standard_conforming_strings is off."
+                                    ),
+                                    self.lexer_errposition()
+                                )
+                            );
                         }
                         self.begin(State::xus);
                         self.literal.clear();
@@ -5370,11 +5377,18 @@ impl Lexer {
 
                         self.set_yylloc();
                         if !STANDARD_CONFORMING_STRINGS {
-                            ereport!(self, ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("unsafe use of string constant with Unicode escapes"),
-								 errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."),
-								 self.lexer_errposition()));
+                            ereport!(
+                                self,
+                                ERROR,
+                                (
+                                    errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                    errmsg("unsafe use of string constant with Unicode escapes"),
+                                    errdetail(
+                                        "String constants with Unicode escapes cannot be used when standard_conforming_strings is off."
+                                    ),
+                                    self.lexer_errposition()
+                                )
+                            );
                         }
                         self.begin(State::xus);
                         self.literal.clear();

@@ -250,7 +250,8 @@ impl Lalr {
                 .map(|c| id_mapper.to_component_id(&c))
                 .or_else(|| {
                     rule.components
-                        .iter().rfind(|c| matches!(c, Component::Terminal(_)))
+                        .iter()
+                        .rfind(|c| matches!(c, Component::Terminal(_)))
                         .map(|c| id_mapper.to_component_id(c))
                 })
                 .and_then(|component_id| assoc[component_id.0 as usize].clone());

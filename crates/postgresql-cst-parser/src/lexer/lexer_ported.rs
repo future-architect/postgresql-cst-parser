@@ -1,5 +1,5 @@
 /// Ported sources from PostgreSQL
-use super::{Lexer, Token, TokenKind, Yylval, parser_error::ParserError};
+use super::{parser_error::ParserError, Lexer, Token, TokenKind, Yylval};
 
 pub fn is_highbit_set(c: char) -> u8 {
     (c as u8) & 0x80
