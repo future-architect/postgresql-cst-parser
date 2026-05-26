@@ -108,18 +108,22 @@ impl std::fmt::Display for Range {
 
 impl Range {
     pub fn extended_by(&self, other: &Self) -> Self {
-        Range {
-            start_byte: self.start_byte.min(other.start_byte),
-            end_byte: self.end_byte.max(other.end_byte),
+        let (start_byte, start_position) = if self.start_byte <= other.start_byte {
+            (self.start_byte, self.start_position.clone())
+        } else {
+            (other.start_byte, other.start_position.clone())
+        };
+        let (end_byte, end_position) = if self.end_byte >= other.end_byte {
+            (self.end_byte, self.end_position.clone())
+        } else {
+            (other.end_byte, other.end_position.clone())
+        };
 
-            start_position: Point {
-                row: self.start_position.row.min(other.start_position.row),
-                column: self.start_position.column.min(other.start_position.column),
-            },
-            end_position: Point {
-                row: self.end_position.row.max(other.end_position.row),
-                column: self.end_position.column.max(other.end_position.column),
-            },
+        Range {
+            start_byte,
+            end_byte,
+            start_position,
+            end_position,
         }
     }
 
@@ -545,6 +549,64 @@ from
         assert_eq!(range.to_string(), "[(5, 0)-(5, 1)]");
 
         assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn range_extended_by_keeps_original_positions_across_lines() {
+        let tree = parse("SELECT a,\n  b").unwrap();
+        let root = tree.root_node();
+        let mut tokens = root
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::IDENT)
+            .map(|node| (node.text(), node.range()));
+
+        let (_, a_range) = tokens.next().expect("should find a token");
+        let (_, b_range) = tokens.next().expect("should find b token");
+        let extended = a_range.extended_by(&b_range);
+        let expected = super::Range {
+            start_byte: a_range.start_byte,
+            end_byte: b_range.end_byte,
+            start_position: a_range.start_position.clone(),
+            end_position: b_range.end_position.clone(),
+        };
+
+        assert_eq!(extended.start_byte, expected.start_byte);
+        assert_eq!(extended.end_byte, expected.end_byte);
+        assert_eq!(
+            extended.start_position.to_string(),
+            expected.start_position.to_string()
+        );
+        assert_eq!(
+            extended.end_position.to_string(),
+            expected.end_position.to_string()
+        );
+    }
+
+    #[test]
+    fn range_extended_by_is_order_independent() {
+        let tree = parse("SELECT a,\n  b").unwrap();
+        let root = tree.root_node();
+        let mut tokens = root
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::IDENT)
+            .map(|node| node.range());
+
+        let a_range = tokens.next().expect("should find a token");
+        let b_range = tokens.next().expect("should find b token");
+
+        let forward = a_range.extended_by(&b_range);
+        let backward = b_range.extended_by(&a_range);
+
+        assert_eq!(forward.start_byte, backward.start_byte);
+        assert_eq!(forward.end_byte, backward.end_byte);
+        assert_eq!(
+            forward.start_position.to_string(),
+            backward.start_position.to_string()
+        );
+        assert_eq!(
+            forward.end_position.to_string(),
+            backward.end_position.to_string()
+        );
     }
 
     #[test]
