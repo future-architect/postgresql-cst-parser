@@ -203,6 +203,20 @@ mod tests {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn test_unexpected_brace_token() {
+        let input = "{}";
+        let actual = parse(input);
+
+        let expected = Err(ParserError::ParseError {
+            message: "unexpected token: {".to_string(),
+            start_byte_pos: 0,
+            end_byte_pos: 1,
+        });
+
+        assert_eq!(actual, expected);
+    }
 }
 
 #[cfg(test)]

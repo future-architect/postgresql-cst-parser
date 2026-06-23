@@ -296,16 +296,19 @@ fn generate_parser_source_code(
                     Component::Terminal(s) => s.to_id(),
                     _ => unreachable!(),
                 },
-                if matches!(
-                    s,
-                    Component::Terminal(TokenKind::C_COMMENT)
-                        | Component::Terminal(TokenKind::SQL_COMMENT)
-                ) {
-                    // Comments are not included in the parser lookahead tokens, so offset them by the number of non-terminal symbols
-                    i + non_terminal_symbols.len()
-                } else {
-                    i
-                }
+                format!(
+                    "Some({})",
+                    if matches!(
+                        s,
+                        Component::Terminal(TokenKind::C_COMMENT)
+                            | Component::Terminal(TokenKind::SQL_COMMENT)
+                    ) {
+                        // Comments are not included in the parser lookahead tokens, so offset them by the number of non-terminal symbols
+                        i + non_terminal_symbols.len()
+                    } else {
+                        i
+                    }
+                )
             )
         })
         .collect::<Vec<_>>()

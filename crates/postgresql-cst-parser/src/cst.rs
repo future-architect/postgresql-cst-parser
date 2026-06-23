@@ -247,7 +247,16 @@ pub fn parse_with_transformer(
             }
         };
 
-        let mut cid = token_kind_to_component_id(&token.kind);
+        let mut cid = match token_kind_to_component_id(&token.kind) {
+            Some(cid) => cid,
+            None => {
+                return Err(ParserError::ParseError {
+                    message: format!("unexpected token: {}", token.value),
+                    start_byte_pos: token.start_byte_pos,
+                    end_byte_pos: token.end_byte_pos,
+                });
+            }
+        };
 
         if matches!(token.kind, TokenKind::C_COMMENT | TokenKind::SQL_COMMENT) {
             if last_pos < token.start_byte_pos {
@@ -297,7 +306,8 @@ pub fn parse_with_transformer(
                     ParseTransform::InsertToken(token_kind) => {
                         let last_extra = extras.last().unwrap();
 
-                        cid = token_kind_to_component_id(&token_kind);
+                        cid = token_kind_to_component_id(&token_kind)
+                            .expect("inserted token should map to a syntax kind");
                         token = Token {
                             start_byte_pos: last_extra.end_byte_pos,
                             end_byte_pos: last_extra.end_byte_pos,
@@ -454,7 +464,8 @@ pub fn parse_with_transformer(
             break;
         }
 
-        let cid = token_kind_to_component_id(&token.kind);
+        let cid = token_kind_to_component_id(&token.kind)
+            .expect("remaining token should map to a syntax kind");
         let kind = SyntaxKind::from_raw(RawSyntaxKind(cid));
         extras.push(Extra {
             kind,
