@@ -33,9 +33,9 @@ pub(crate) fn end_rule_kind() -> TokenKind {{end_rule_kind}}
 
 pub(crate) fn end_rule_id() -> u32 {{end_rule_id}}
 
-pub(crate) fn token_kind_to_component_id(kind: &TokenKind) -> u32 {
+pub(crate) fn token_kind_to_component_id(kind: &TokenKind) -> Option<u32> {
     match kind {{token_to_component_id}
-    _ => unreachable!(),
+    _ => None,
     }
 }
 

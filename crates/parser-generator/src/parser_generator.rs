@@ -286,26 +286,30 @@ fn generate_parser_source_code(
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            format!(
-                r#"TokenKind::{} => {},"#,
-                match s {
-                    Component::Terminal(TokenKind::RAW(s)) =>
-                        format!(r#"RAW(s) if s == "{}""#, s.trim_matches('\'')),
-                    Component::Terminal(TokenKind::KEYWORD(s)) =>
-                        format!(r#"KEYWORD(s) if s == "{s}""#),
-                    Component::Terminal(s) => s.to_id(),
-                    _ => unreachable!(),
-                },
-                if matches!(
-                    s,
-                    Component::Terminal(TokenKind::C_COMMENT)
-                        | Component::Terminal(TokenKind::SQL_COMMENT)
-                ) {
-                    // Comments are not included in the parser lookahead tokens, so offset them by the number of non-terminal symbols
-                    i + non_terminal_symbols.len()
-                } else {
-                    i
+            let token_pattern = match s {
+                Component::Terminal(TokenKind::RAW(s)) => {
+                    format!(r#"RAW(s) if s == "{}""#, s.trim_matches('\''))
                 }
+                Component::Terminal(TokenKind::KEYWORD(s)) => {
+                    format!(r#"KEYWORD(s) if s == "{s}""#)
+                }
+                Component::Terminal(s) => s.to_id(),
+                _ => unreachable!(),
+            };
+            let component_id = if matches!(
+                s,
+                Component::Terminal(TokenKind::C_COMMENT)
+                    | Component::Terminal(TokenKind::SQL_COMMENT)
+            ) {
+                // Comments are not included in the parser lookahead tokens, so offset them by the number of non-terminal symbols
+                i + non_terminal_symbols.len()
+            } else {
+                i
+            };
+            format!(
+                r#"TokenKind::{} => Some({}),"#,
+                token_pattern,
+                component_id,
             )
         })
         .collect::<Vec<_>>()
