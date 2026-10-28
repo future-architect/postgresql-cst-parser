@@ -4,7 +4,7 @@ mod assert_util;
 mod convert;
 use convert::get_ts_tree_and_range_map;
 
-use std::{collections::HashMap, fmt::Display, rc::Rc, str};
+use std::{collections::HashMap, fmt::Display, str};
 
 use cstree::text::TextRange;
 
@@ -28,10 +28,12 @@ pub fn parse_2way(input: &str) -> Result<Tree, ParserError> {
     Ok(Tree::new(input, root, range_map))
 }
 
+/// A parsed SQL text. It owns the source, the CST and the position table; nodes and
+/// cursors borrow it, so a tree can be moved across threads or await points.
 pub struct Tree {
     src: String,
     root: ResolvedNode,
-    range_map: Rc<HashMap<TextRange, Range>>,
+    range_map: HashMap<TextRange, Range>,
 }
 
 impl Tree {
@@ -43,24 +45,39 @@ impl Tree {
         Self {
             src: src.into(),
             root,
-            range_map: Rc::new(range_map),
+            range_map,
         }
     }
 
     pub fn root_node(&self) -> Node<'_> {
         Node {
-            input: &self.src,
-            range_map: Rc::clone(&self.range_map),
+            tree: self,
             node_or_token: NodeOrToken::Node(&self.root),
         }
     }
+
+    /// The source text this tree was parsed from.
+    pub fn source(&self) -> &str {
+        &self.src
+    }
 }
 
-#[derive(Debug, Clone)]
+impl std::fmt::Debug for Tree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tree").field("root", &self.root).finish()
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct Node<'a> {
-    input: &'a str,
-    range_map: Rc<HashMap<TextRange, Range>>,
-    pub node_or_token: NodeOrToken<'a>,
+    tree: &'a Tree,
+    node_or_token: NodeOrToken<'a>,
+}
+
+impl std::fmt::Debug for Node<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Node").field(&self.node_or_token).finish()
+    }
 }
 
 impl<'a> PartialEq for Node<'a> {
@@ -71,11 +88,16 @@ impl<'a> PartialEq for Node<'a> {
 
 impl<'a> Eq for Node<'a> {}
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TreeCursor<'a> {
-    pub input: &'a str,
-    range_map: Rc<HashMap<TextRange, Range>>,
+    tree: &'a Tree,
     node_or_token: NodeOrToken<'a>,
+}
+
+impl std::fmt::Debug for TreeCursor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("TreeCursor").field(&self.node_or_token).finish()
+    }
 }
 
 // https://github.com/tree-sitter/tree-sitter/blob/90666c951d53c13cc6cf5002d971a6debed74244/lib/binding_rust/lib.rs#L74-L78
@@ -133,20 +155,30 @@ impl Range {
 }
 
 impl<'a> Node<'a> {
-    pub fn walk(&self) -> TreeCursor<'a> {
-        TreeCursor {
-            input: self.input,
-            range_map: Rc::clone(&self.range_map),
-            node_or_token: self.node_or_token,
+    fn with(&self, node_or_token: NodeOrToken<'a>) -> Node<'a> {
+        Node {
+            tree: self.tree,
+            node_or_token,
         }
+    }
+
+    pub fn walk(&self) -> TreeCursor<'a> {
+        TreeCursor::from(*self)
     }
 
     pub fn kind(&self) -> SyntaxKind {
         self.node_or_token.kind()
     }
 
+    /// Whether this is a token (a leaf) rather than a node.
+    /// this is not tree-sitter's API
+    pub fn is_token(&self) -> bool {
+        self.node_or_token.as_token().is_some()
+    }
+
     pub fn range(&self) -> Range {
-        self.range_map
+        self.tree
+            .range_map
             .get(&self.node_or_token.text_range())
             .cloned()
             .unwrap()
@@ -167,7 +199,7 @@ impl<'a> Node<'a> {
             ..
         } = self.range();
 
-        &self.input[start_byte..end_byte]
+        &self.tree.src[start_byte..end_byte]
     }
 
     pub fn child_count(&self) -> usize {
@@ -181,11 +213,7 @@ impl<'a> Node<'a> {
     pub fn children(&self) -> Vec<Node<'a>> {
         if let Some(node) = self.node_or_token.as_node() {
             node.children_with_tokens()
-                .map(|node| Node {
-                    input: self.input,
-                    range_map: Rc::clone(&self.range_map),
-                    node_or_token: node,
-                })
+                .map(|child| self.with(child))
                 .collect()
         } else {
             vec![]
@@ -195,57 +223,37 @@ impl<'a> Node<'a> {
     /// Returns the first child element of this node.
     /// this is not tree-sitter's API
     pub fn first_child(&self) -> Option<Node<'a>> {
-        if let Some(node) = self.node_or_token.as_node() {
-            node.first_child_or_token().map(|child| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: child,
-            })
-        } else {
-            None
-        }
+        self.node_or_token
+            .as_node()
+            .and_then(|node| node.first_child_or_token())
+            .map(|child| self.with(child))
     }
 
     /// Returns the last child element of this node.
     /// this is not tree-sitter's API
     pub fn last_child(&self) -> Option<Node<'a>> {
-        if let Some(node) = self.node_or_token.as_node() {
-            node.last_child_or_token().map(|child| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: child,
-            })
-        } else {
-            None
-        }
+        self.node_or_token
+            .as_node()
+            .and_then(|node| node.last_child_or_token())
+            .map(|child| self.with(child))
     }
 
     pub fn next_sibling(&self) -> Option<Node<'a>> {
         self.node_or_token
             .next_sibling_or_token()
-            .map(|sibling| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: sibling,
-            })
+            .map(|sibling| self.with(sibling))
     }
 
     pub fn prev_sibling(&self) -> Option<Node<'a>> {
         self.node_or_token
             .prev_sibling_or_token()
-            .map(|sibling| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: sibling,
-            })
+            .map(|sibling| self.with(sibling))
     }
 
     pub fn parent(&self) -> Option<Node<'a>> {
-        self.node_or_token.parent().map(|parent| Node {
-            input: self.input,
-            range_map: Rc::clone(&self.range_map),
-            node_or_token: NodeOrToken::Node(parent),
-        })
+        self.node_or_token
+            .parent()
+            .map(|parent| self.with(NodeOrToken::Node(parent)))
     }
 
     pub fn is_comment(&self) -> bool {
@@ -255,17 +263,11 @@ impl<'a> Node<'a> {
     /// Returns the rightmost token in the subtree of this node.
     /// this is not tree-sitter's API
     pub fn last_token(&self) -> Option<Node<'a>> {
-        match &self.node_or_token {
-            NodeOrToken::Node(node) => node.last_token().map(|token| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: NodeOrToken::Token(token),
-            }),
-            NodeOrToken::Token(token) => Some(Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: NodeOrToken::Token(token),
-            }),
+        match self.node_or_token {
+            NodeOrToken::Node(node) => node
+                .last_token()
+                .map(|token| self.with(NodeOrToken::Token(token))),
+            NodeOrToken::Token(_) => Some(*self),
         }
     }
 
@@ -274,53 +276,36 @@ impl<'a> Node<'a> {
     /// but will always be further right in the tree.
     /// this is not tree-sitter's API
     pub fn next_token(&self) -> Option<Node<'a>> {
-        match &self.node_or_token {
-            NodeOrToken::Token(token) => token.next_token().map(|next_token| Node {
-                input: self.input,
-                range_map: Rc::clone(&self.range_map),
-                node_or_token: NodeOrToken::Token(next_token),
-            }),
-            NodeOrToken::Node(node) => {
-                // For a node, find its last token and then get the next token
-                node.last_token()
-                    .and_then(|last_token| last_token.next_token())
-                    .map(|next_token| Node {
-                        input: self.input,
-                        range_map: Rc::clone(&self.range_map),
-                        node_or_token: NodeOrToken::Token(next_token),
-                    })
-            }
-        }
+        let token = match self.node_or_token {
+            NodeOrToken::Token(token) => Some(token),
+            NodeOrToken::Node(node) => node.last_token(),
+        };
+        token
+            .and_then(|token| token.next_token())
+            .map(|next| self.with(NodeOrToken::Token(next)))
     }
 
     /// Returns an iterator over all nodes in the subtree starting at this node,
     /// including this node and tokens.
     /// this is not tree-sitter's API
-    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + '_ {
-        let input = self.input;
-        let range_map = Rc::clone(&self.range_map);
-
-        let iter: Box<dyn Iterator<Item = Node<'a>> + '_> = match self.node_or_token.as_node() {
-            Some(node) => Box::new(
-                node.descendants_with_tokens()
-                    .map(move |node_or_token| Node {
-                        input,
-                        range_map: Rc::clone(&range_map),
-                        node_or_token,
-                    }),
-            ),
-            None => Box::new(std::iter::once(self.clone())),
+    pub fn descendants(&self) -> impl Iterator<Item = Node<'a>> + 'a {
+        let this = *self;
+        let token = this.is_token().then_some(this);
+        let node = match this.node_or_token {
+            NodeOrToken::Node(node) => Some(node),
+            NodeOrToken::Token(_) => None,
         };
-
-        iter
+        node.into_iter()
+            .flat_map(|node| node.descendants_with_tokens())
+            .map(move |node_or_token| this.with(node_or_token))
+            .chain(token)
     }
 }
 
 impl<'a> From<Node<'a>> for TreeCursor<'a> {
     fn from(value: Node<'a>) -> Self {
         Self {
-            input: value.input,
-            range_map: value.range_map,
+            tree: value.tree,
             node_or_token: value.node_or_token,
         }
     }
@@ -329,10 +314,14 @@ impl<'a> From<Node<'a>> for TreeCursor<'a> {
 impl<'a> TreeCursor<'a> {
     pub fn node(&self) -> Node<'a> {
         Node {
-            input: self.input,
-            range_map: Rc::clone(&self.range_map),
+            tree: self.tree,
             node_or_token: self.node_or_token,
         }
+    }
+
+    /// The source text of the tree this cursor walks.
+    pub fn source(&self) -> &'a str {
+        &self.tree.src
     }
 
     pub fn goto_first_child(&mut self) -> bool {
@@ -377,18 +366,6 @@ impl<'a> TreeCursor<'a> {
             self.node_or_token.kind(),
             SyntaxKind::C_COMMENT | SyntaxKind::SQL_COMMENT
         )
-    }
-}
-
-pub fn as_tree_sitter_cursor<'a>(
-    input: &'a str,
-    node: &'a ResolvedNode,
-    range_map: HashMap<TextRange, Range>,
-) -> TreeCursor<'a> {
-    TreeCursor {
-        input,
-        range_map: Rc::new(range_map),
-        node_or_token: NodeOrToken::Node(node),
     }
 }
 
@@ -726,5 +703,20 @@ from
         let next_token = name.next_token().expect("should have next token");
         assert_eq!(next_token.text(), "as");
         assert_eq!(next_token.kind(), SyntaxKind::AS);
+    }
+}
+
+#[cfg(test)]
+mod send_sync_check {
+    fn assert_send_sync<T: Send + Sync>() {}
+    #[test]
+    fn tree_and_nodes_are_send_and_sync() {
+        assert_send_sync::<super::Tree>();
+        assert_send_sync::<super::Node<'static>>();
+        assert_send_sync::<super::TreeCursor<'static>>();
+        fn descendants_are_send(node: super::Node<'static>) -> impl Send {
+            node.descendants()
+        }
+        let _ = descendants_are_send;
     }
 }
