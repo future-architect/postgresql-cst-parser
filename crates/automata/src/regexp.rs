@@ -1,5 +1,5 @@
 // const EOF: &'static str = "<<EOF>>";
-const EOF_MARKER: [u8; 7] = [b'<', b'<', b'E', b'O', b'F', b'>', b'>'];
+const EOF_MARKER: [u8; 7] = *b"<<EOF>>";
 
 /// Abstract Syntax Tree node for regular expression patterns.
 /// Represents different components that can appear in a regex pattern.
