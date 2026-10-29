@@ -328,7 +328,7 @@ fn generate_parser_source_code(
         .map(|rule| {
             format!(
                 r#"Rule {{name:"{}",len:{},}},"#,
-                &rule.name,
+                rule.name,
                 rule.components.len(),
             )
         })
